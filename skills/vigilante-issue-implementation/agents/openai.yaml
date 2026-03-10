@@ -1,4 +1,4 @@
 interface:
   display_name: "Vigilante Issue Implementation"
-  short_description: "Implement a Vigilante-dispatched GitHub issue with issue comments and validation"
-  default_prompt: "Use $vigilante-issue-implementation to implement the assigned issue in the provided worktree, comment on the issue as progress is made, and report failures clearly."
+  short_description: "Implement a Vigilante-dispatched GitHub issue with issue comments, pushed changes, and a PR"
+  default_prompt: "Use $vigilante-issue-implementation to implement the assigned issue in the provided worktree, push the branch, open a PR, comment on the issue as progress is made, and report failures clearly."

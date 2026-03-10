@@ -6,7 +6,7 @@ description: Implement a GitHub issue end-to-end when Vigilante dispatches work 
 # Vigilante Issue Implementation
 
 ## Overview
-Implement one GitHub issue from Vigilante dispatch through validated code changes in the provided worktree. Always work inside the assigned worktree, always respect repository instructions, and always keep the GitHub issue updated with start, progress, and failure comments.
+Implement one GitHub issue from Vigilante dispatch through validated code changes, a pushed branch, and an opened pull request from the provided worktree. Always work inside the assigned worktree, always respect repository instructions, and always keep the GitHub issue updated with start, progress, and failure comments.
 
 ## Inputs
 Require these inputs from Vigilante:
@@ -43,21 +43,33 @@ Require these inputs from Vigilante:
 - Prefer targeted validation first, then broader validation when necessary.
 - If a command fails, determine whether the problem is in the code, test setup, or environment before retrying.
 
-5. Post progress comments at meaningful milestones
+5. Commit and push the branch
+- Commit only issue-relevant changes in the assigned branch.
+- Push the assigned branch to the remote.
+- Do not leave completed implementation work only in the local worktree.
+
+6. Open a pull request
+- Always create a pull request for the completed change set.
+- Target the repository default branch unless repository instructions say otherwise.
+- Reference the issue in the PR body when appropriate.
+- Include concise validation notes in the PR description.
+
+7. Post progress comments at meaningful milestones
 - Comment when investigation is complete and implementation starts.
 - Comment when major milestones are reached, such as a core fix landing or tests passing.
+- Comment when the branch has been pushed and the PR has been opened.
 - Keep comments concise and factual.
 - Do not spam the issue with low-signal updates.
 
-6. Handle failures and blockers explicitly
+8. Handle failures and blockers explicitly
 - If tool setup fails, validation fails, or the issue is blocked, comment on the issue with the concrete problem.
 - Include enough detail for a human maintainer to understand the current state and next step.
 - If work cannot proceed safely, stop and report the blocker instead of guessing.
 
-7. Finish with a clear terminal state
+9. Finish with a clear terminal state
 - Leave the worktree in a coherent state.
 - Ensure any executed validations are accurately reported.
-- If the task completed successfully, summarize what changed and what was validated.
+- If the task completed successfully, summarize what changed, what was validated, and which PR was opened.
 - If the task failed, summarize the failure clearly in the issue comment.
 
 ## GitHub Commenting Rules
@@ -73,17 +85,22 @@ Require these inputs from Vigilante:
 - Never make unrelated refactors unless they are required to complete the issue safely.
 - Never silently fail; report errors or blockers back to the issue.
 - Never claim validation passed unless the corresponding command actually succeeded.
+- Never stop at local-only code changes when the task is complete; push the branch and create the PR.
 
 ## Completion Criteria
 - The issue received a start comment.
 - Progress or failure comments were posted as appropriate for the work performed.
 - Code changes are scoped to the issue and live in the assigned worktree.
 - Relevant validation was run and accurately reported.
+- The branch was pushed to the remote.
+- A pull request was opened for the change.
 - Final session state is clear to both Vigilante and the GitHub issue reader.
 
 ## Output Expectations
 When using this skill, the agent should leave:
 
 - code changes in the assigned worktree
+- a pushed branch containing those changes
+- an opened pull request for those changes
 - a clear issue comment trail
 - accurate success or failure reporting
