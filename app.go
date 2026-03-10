@@ -270,6 +270,7 @@ func (a *App) ScanOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	startedCount := 0
 
 	for i := range targets {
 		target := &targets[i]
@@ -284,6 +285,7 @@ func (a *App) ScanOnce(ctx context.Context) error {
 
 		next := SelectNextIssue(issues, sessions, target.Repo)
 		if next == nil {
+			fmt.Fprintf(a.stdout, "repo: %s no eligible issues (%d open)\n", target.Repo, len(issues))
 			continue
 		}
 
@@ -308,6 +310,8 @@ func (a *App) ScanOnce(ctx context.Context) error {
 		if err := a.state.SaveSessions(sessions); err != nil {
 			return err
 		}
+		startedCount++
+		fmt.Fprintf(a.stdout, "repo: %s started issue #%d in %s\n", target.Repo, next.Number, worktree.Path)
 
 		result := RunIssueSession(ctx, a.env, a.state, *target, *next, session)
 		sessions = upsertSession(sessions, result)
@@ -315,6 +319,8 @@ func (a *App) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
+
+	fmt.Fprintf(a.stdout, "scanned %d watch target(s), started %d issue session(s)\n", len(targets), startedCount)
 
 	return a.state.SaveWatchTargets(targets)
 }
