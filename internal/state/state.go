@@ -12,12 +12,13 @@ import (
 )
 
 type WatchTarget struct {
-	Path          string `json:"path"`
-	Repo          string `json:"repo"`
-	Branch        string `json:"branch"`
-	DaemonEnabled bool   `json:"daemon_enabled"`
-	LastScanAt    string `json:"last_scan_at,omitempty"`
-	AddedAt       string `json:"added_at,omitempty"`
+	Path          string   `json:"path"`
+	Repo          string   `json:"repo"`
+	Branch        string   `json:"branch"`
+	Labels        []string `json:"labels,omitempty"`
+	DaemonEnabled bool     `json:"daemon_enabled"`
+	LastScanAt    string   `json:"last_scan_at,omitempty"`
+	AddedAt       string   `json:"added_at,omitempty"`
 }
 
 type SessionStatus string
