@@ -34,6 +34,21 @@ type App struct {
 	env    *environment.Environment
 }
 
+type stringListFlag []string
+
+func (f *stringListFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *stringListFlag) Set(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return errors.New("label cannot be empty")
+	}
+	*f = append(*f, trimmed)
+	return nil
+}
+
 func New() *App {
 	store := state.NewStore()
 	return &App{
@@ -79,13 +94,15 @@ func (a *App) runCommand(ctx context.Context, args []string) error {
 		fs := flag.NewFlagSet("watch", flag.ContinueOnError)
 		fs.SetOutput(a.stderr)
 		daemon := fs.Bool("d", false, "install and start daemon service")
+		var labels stringListFlag
+		fs.Var(&labels, "label", "allow only issues with this label; repeatable")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: vigilante watch [-d] <path>")
+			return errors.New("usage: vigilante watch [-d] [--label value] <path>")
 		}
-		return a.Watch(ctx, fs.Arg(0), *daemon)
+		return a.Watch(ctx, fs.Arg(0), *daemon, labels)
 	case "unwatch":
 		if len(args) != 2 {
 			return errors.New("usage: vigilante unwatch <path>")
@@ -137,7 +154,7 @@ func (a *App) Setup(ctx context.Context, installDaemon bool) error {
 	return nil
 }
 
-func (a *App) Watch(ctx context.Context, rawPath string, daemon bool) error {
+func (a *App) Watch(ctx context.Context, rawPath string, daemon bool, labels []string) error {
 	a.state.AppendDaemonLog("watch start raw_path=%q daemon=%t", rawPath, daemon)
 	if err := a.state.EnsureLayout(); err != nil {
 		return err
@@ -158,11 +175,14 @@ func (a *App) Watch(ctx context.Context, rawPath string, daemon bool) error {
 		return err
 	}
 
+	labels = normalizeLabels(labels)
+
 	updated := false
 	for i, target := range targets {
 		if target.Path == info.Path {
 			targets[i].Repo = info.Repo
 			targets[i].Branch = info.Branch
+			targets[i].Labels = labels
 			targets[i].DaemonEnabled = daemon
 			updated = true
 			break
@@ -174,6 +194,7 @@ func (a *App) Watch(ctx context.Context, rawPath string, daemon bool) error {
 			Path:          info.Path,
 			Repo:          info.Repo,
 			Branch:        info.Branch,
+			Labels:        labels,
 			DaemonEnabled: daemon,
 			AddedAt:       a.clock().Format(time.RFC3339),
 		}
@@ -319,7 +340,7 @@ func (a *App) ScanOnce(ctx context.Context) error {
 			}
 			a.state.AppendDaemonLog("scan repo issues repo=%s open_issues=%d", target.Repo, len(issues))
 
-			next := ghcli.SelectNextIssue(issues, sessions, target.Repo)
+			next := ghcli.SelectNextIssue(issues, sessions, *target)
 			if next == nil {
 				a.state.AppendDaemonLog("scan repo no eligible issues repo=%s", target.Repo)
 				fmt.Fprintf(a.stdout, "repo: %s no eligible issues (%d open)\n", target.Repo, len(issues))
@@ -442,7 +463,7 @@ func (a *App) ensureTooling(ctx context.Context) error {
 func (a *App) printUsage() {
 	fmt.Fprintln(a.stderr, "usage:")
 	fmt.Fprintln(a.stderr, "  vigilante setup [-d]")
-	fmt.Fprintln(a.stderr, "  vigilante watch [-d] <path>")
+	fmt.Fprintln(a.stderr, "  vigilante watch [-d] [--label value] <path>")
 	fmt.Fprintln(a.stderr, "  vigilante unwatch <path>")
 	fmt.Fprintln(a.stderr, "  vigilante list")
 	fmt.Fprintln(a.stderr, "  vigilante daemon run [--once] [--interval duration]")
@@ -475,4 +496,26 @@ func ExpandPath(raw string) (string, error) {
 		}
 	}
 	return filepath.Abs(raw)
+}
+
+func normalizeLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(labels))
+	normalized := make([]string, 0, len(labels))
+	for _, label := range labels {
+		trimmed := strings.TrimSpace(label)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		normalized = append(normalized, trimmed)
+	}
+	sort.Strings(normalized)
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }

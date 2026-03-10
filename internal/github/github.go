@@ -17,6 +17,11 @@ type Issue struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"createdAt"`
 	URL       string    `json:"url"`
+	Labels    []Label   `json:"labels"`
+}
+
+type Label struct {
+	Name string `json:"name"`
 }
 
 type PullRequest struct {
@@ -26,7 +31,7 @@ type PullRequest struct {
 }
 
 func ListOpenIssues(ctx context.Context, runner environment.Runner, repo string) ([]Issue, error) {
-	output, err := runner.Run(ctx, "", "gh", "issue", "list", "--repo", repo, "--state", "open", "--json", "number,title,createdAt,url")
+	output, err := runner.Run(ctx, "", "gh", "issue", "list", "--repo", repo, "--state", "open", "--json", "number,title,createdAt,url,labels")
 	if err != nil {
 		return nil, err
 	}
@@ -40,19 +45,38 @@ func ListOpenIssues(ctx context.Context, runner environment.Runner, repo string)
 	return issues, nil
 }
 
-func SelectNextIssue(issues []Issue, sessions []state.Session, repo string) *Issue {
+func SelectNextIssue(issues []Issue, sessions []state.Session, target state.WatchTarget) *Issue {
 	active := map[int]bool{}
 	for _, session := range sessions {
-		if session.Repo == repo && session.Status == state.SessionStatusRunning {
+		if session.Repo == target.Repo && session.Status == state.SessionStatusRunning {
 			active[session.IssueNumber] = true
 		}
 	}
 	for i := range issues {
-		if !active[issues[i].Number] {
-			return &issues[i]
+		if active[issues[i].Number] {
+			continue
 		}
+		if !matchesLabelAllowlist(issues[i], target.Labels) {
+			continue
+		}
+		return &issues[i]
 	}
 	return nil
+}
+
+func matchesLabelAllowlist(issue Issue, allowlist []string) bool {
+	if len(allowlist) == 0 {
+		return true
+	}
+
+	for _, configured := range allowlist {
+		for _, label := range issue.Labels {
+			if label.Name == configured {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func CommentOnIssue(ctx context.Context, runner environment.Runner, repo string, number int, body string) error {
