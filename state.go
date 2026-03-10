@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 type WatchTarget struct {
@@ -81,6 +83,10 @@ func (s *StateStore) LogsDir() string {
 	return filepath.Join(s.root, "logs")
 }
 
+func (s *StateStore) DaemonLogPath() string {
+	return filepath.Join(s.LogsDir(), "vigilante.log")
+}
+
 func (s *StateStore) SessionLogPath(issueNumber int) string {
 	return filepath.Join(s.LogsDir(), fmt.Sprintf("issue-%d.log", issueNumber))
 }
@@ -152,4 +158,20 @@ func writeJSONFile(path string, value any) error {
 	}
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0o644)
+}
+
+func (s *StateStore) AppendDaemonLog(format string, args ...any) {
+	appendLogFile(s.DaemonLogPath(), fmt.Sprintf(format, args...))
+}
+
+func appendLogFile(path string, message string) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = fmt.Fprintf(f, "[%s] %s\n", time.Now().UTC().Format(time.RFC3339), strings.TrimSpace(message))
 }

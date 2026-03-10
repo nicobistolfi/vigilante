@@ -26,12 +26,19 @@ type App struct {
 }
 
 func NewApp() *App {
+	state := NewStateStore()
 	return &App{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
-		state:  NewStateStore(),
+		state:  state,
 		clock:  time.Now().UTC,
-		env:    NewEnvironment(runtime.GOOS),
+		env: &Environment{
+			OS: runtime.GOOS,
+			Runner: LoggingRunner{
+				Base: ExecRunner{},
+				Logf: state.AppendDaemonLog,
+			},
+		},
 	}
 }
 
@@ -101,6 +108,7 @@ func (a *App) runDaemonCommand(ctx context.Context, args []string) error {
 }
 
 func (a *App) Setup(ctx context.Context, installDaemon bool) error {
+	a.state.AppendDaemonLog("setup start install_daemon=%t", installDaemon)
 	if err := a.state.EnsureLayout(); err != nil {
 		return err
 	}
@@ -115,11 +123,13 @@ func (a *App) Setup(ctx context.Context, installDaemon bool) error {
 			return err
 		}
 	}
+	a.state.AppendDaemonLog("setup complete install_daemon=%t", installDaemon)
 	fmt.Fprintln(a.stdout, "setup complete")
 	return nil
 }
 
 func (a *App) Watch(ctx context.Context, rawPath string, daemon bool) error {
+	a.state.AppendDaemonLog("watch start raw_path=%q daemon=%t", rawPath, daemon)
 	if err := a.state.EnsureLayout(); err != nil {
 		return err
 	}
@@ -174,14 +184,17 @@ func (a *App) Watch(ctx context.Context, rawPath string, daemon bool) error {
 	}
 
 	if updated {
+		a.state.AppendDaemonLog("watch updated path=%s repo=%s branch=%s daemon=%t", info.Path, info.Repo, info.Branch, daemon)
 		fmt.Fprintln(a.stdout, "updated", info.Path)
 	} else {
+		a.state.AppendDaemonLog("watch added path=%s repo=%s branch=%s daemon=%t", info.Path, info.Repo, info.Branch, daemon)
 		fmt.Fprintln(a.stdout, "watching", info.Path)
 	}
 	return nil
 }
 
 func (a *App) Unwatch(rawPath string) error {
+	a.state.AppendDaemonLog("unwatch start raw_path=%q", rawPath)
 	if err := a.state.EnsureLayout(); err != nil {
 		return err
 	}
@@ -211,6 +224,7 @@ func (a *App) Unwatch(rawPath string) error {
 	if err := a.state.SaveWatchTargets(filtered); err != nil {
 		return err
 	}
+	a.state.AppendDaemonLog("unwatch removed path=%s", path)
 	fmt.Fprintln(a.stdout, "removed", path)
 	return nil
 }
@@ -236,6 +250,7 @@ func (a *App) DaemonRun(ctx context.Context, interval time.Duration, once bool) 
 	if interval <= 0 {
 		return errors.New("interval must be positive")
 	}
+	a.state.AppendDaemonLog("daemon run start once=%t interval=%s", once, interval)
 
 	if once {
 		return a.ScanOnce(ctx)
@@ -246,6 +261,7 @@ func (a *App) DaemonRun(ctx context.Context, interval time.Duration, once bool) 
 
 	for {
 		if err := a.ScanOnce(ctx); err != nil {
+			a.state.AppendDaemonLog("scan error err=%v", err)
 			fmt.Fprintln(a.stderr, "scan error:", err)
 		}
 
@@ -258,6 +274,7 @@ func (a *App) DaemonRun(ctx context.Context, interval time.Duration, once bool) 
 }
 
 func (a *App) ScanOnce(ctx context.Context) error {
+	a.state.AppendDaemonLog("scan start")
 	if err := a.state.EnsureLayout(); err != nil {
 		return err
 	}
@@ -274,6 +291,7 @@ func (a *App) ScanOnce(ctx context.Context) error {
 
 	for i := range targets {
 		target := &targets[i]
+		a.state.AppendDaemonLog("scan repo start repo=%s path=%s", target.Repo, target.Path)
 		issues, err := ListOpenIssues(ctx, a.env.Runner, target.Repo)
 		target.LastScanAt = a.clock().Format(time.RFC3339)
 		if err != nil {
@@ -282,17 +300,21 @@ func (a *App) ScanOnce(ctx context.Context) error {
 			}
 			return err
 		}
+		a.state.AppendDaemonLog("scan repo issues repo=%s open_issues=%d", target.Repo, len(issues))
 
 		next := SelectNextIssue(issues, sessions, target.Repo)
 		if next == nil {
+			a.state.AppendDaemonLog("scan repo no eligible issues repo=%s", target.Repo)
 			fmt.Fprintf(a.stdout, "repo: %s no eligible issues (%d open)\n", target.Repo, len(issues))
 			continue
 		}
+		a.state.AppendDaemonLog("scan repo selected issue repo=%s issue=%d title=%q", target.Repo, next.Number, next.Title)
 
 		worktree, err := CreateIssueWorktree(ctx, a.env.Runner, *target, next.Number)
 		if err != nil {
 			return err
 		}
+		a.state.AppendDaemonLog("scan repo worktree ready repo=%s issue=%d path=%s branch=%s", target.Repo, next.Number, worktree.Path, worktree.Branch)
 
 		session := Session{
 			RepoPath:     target.Path,
@@ -318,9 +340,11 @@ func (a *App) ScanOnce(ctx context.Context) error {
 		if err := a.state.SaveSessions(sessions); err != nil {
 			return err
 		}
+		a.state.AppendDaemonLog("scan repo session finished repo=%s issue=%d status=%s", target.Repo, next.Number, result.Status)
 	}
 
 	fmt.Fprintf(a.stdout, "scanned %d watch target(s), started %d issue session(s)\n", len(targets), startedCount)
+	a.state.AppendDaemonLog("scan complete targets=%d started=%d", len(targets), startedCount)
 
 	return a.state.SaveWatchTargets(targets)
 }
