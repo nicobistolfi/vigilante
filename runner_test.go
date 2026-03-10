@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestRunIssueSessionSuccess(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
 	runner := fakeRunner{
 		outputs: map[string]string{
 			"gh issue comment --repo owner/repo 7 --body Vigilante started a Codex session for this issue in `/tmp/worktree` on branch `vigilante/issue-7`.": "ok",
@@ -14,14 +18,27 @@ func TestRunIssueSessionSuccess(t *testing.T) {
 		},
 	}
 	env := &Environment{OS: "darwin", Runner: runner}
-	session := Session{RepoPath: "/tmp/repo", WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-7", Status: SessionStatusRunning}
-	got := RunIssueSession(context.Background(), env, NewStateStore(), WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}, GitHubIssue{Number: 7, Title: "Demo", URL: "https://github.com/owner/repo/issues/7"}, session)
+	state := NewStateStore()
+	if err := state.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+	session := Session{RepoPath: "/tmp/repo", IssueNumber: 7, WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-7", Status: SessionStatusRunning}
+	got := RunIssueSession(context.Background(), env, state, WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}, GitHubIssue{Number: 7, Title: "Demo", URL: "https://github.com/owner/repo/issues/7"}, session)
 	if got.Status != SessionStatusSuccess {
 		t.Fatalf("unexpected status: %#v", got)
+	}
+	data, err := os.ReadFile(state.SessionLogPath(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "session succeeded") || !strings.Contains(string(data), "done") {
+		t.Fatalf("unexpected log: %s", string(data))
 	}
 }
 
 func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
 	runner := fakeRunner{
 		outputs: map[string]string{
 			"gh issue comment --repo owner/repo 7 --body Vigilante started a Codex session for this issue in `/tmp/worktree` on branch `vigilante/issue-7`.":                                              "ok",
@@ -32,12 +49,23 @@ func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
 		},
 	}
 	env := &Environment{OS: "darwin", Runner: runner}
-	session := Session{RepoPath: "/tmp/repo", WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-7", Status: SessionStatusRunning}
-	got := RunIssueSession(context.Background(), env, NewStateStore(), WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}, GitHubIssue{Number: 7, Title: "Demo", URL: "https://github.com/owner/repo/issues/7"}, session)
+	state := NewStateStore()
+	if err := state.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+	session := Session{RepoPath: "/tmp/repo", IssueNumber: 7, WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-7", Status: SessionStatusRunning}
+	got := RunIssueSession(context.Background(), env, state, WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}, GitHubIssue{Number: 7, Title: "Demo", URL: "https://github.com/owner/repo/issues/7"}, session)
 	if got.Status != SessionStatusFailed {
 		t.Fatalf("unexpected status: %#v", got)
 	}
 	if !strings.Contains(got.LastError, "exit status 1") {
 		t.Fatalf("unexpected error: %#v", got)
+	}
+	data, err := os.ReadFile(state.SessionLogPath(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "session failed") || !strings.Contains(string(data), "exit status 1") {
+		t.Fatalf("unexpected log: %s", string(data))
 	}
 }

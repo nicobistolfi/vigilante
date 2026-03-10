@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -78,6 +79,10 @@ func (s *StateStore) EnsureLayout() error {
 
 func (s *StateStore) LogsDir() string {
 	return filepath.Join(s.root, "logs")
+}
+
+func (s *StateStore) SessionLogPath(issueNumber int) string {
+	return filepath.Join(s.LogsDir(), fmt.Sprintf("issue-%d.log", issueNumber))
 }
 
 func (s *StateStore) watchlistPath() string {
