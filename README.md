@@ -105,6 +105,54 @@ Expected behavior:
 - installs the Codex issue implementation skill from the repo `skills/` folder if missing, including any companion files under that skill directory
 - installs or updates the daemon definition when requested
 
+## Development Mode
+
+For fast local iteration, prefer running `vigilante` in the foreground instead of going through the installed OS service on every change.
+
+Recommended loop:
+
+```sh
+go test ./...
+go build -o ./vigilante .
+./vigilante setup
+./vigilante watch /path/to/repo
+./vigilante daemon run --once
+```
+
+Useful development commands:
+
+- run a single scan without installing the daemon:
+
+```sh
+go run . daemon run --once
+```
+
+- run the foreground daemon loop directly from source:
+
+```sh
+go run . daemon run --interval 30s
+```
+
+- rebuild the installed binary and refresh the installed Codex skill:
+
+```sh
+go build -o /Users/$USER/.local/bin/vigilante .
+/Users/$USER/.local/bin/vigilante setup
+```
+
+- reinstall the OS service after changing daemon or service behavior:
+
+```sh
+/Users/$USER/.local/bin/vigilante setup -d
+```
+
+Notes:
+
+- foreground runs are the quickest way to iterate on scheduler, worktree, and Codex execution behavior
+- `setup` refreshes the installed skill from the repo `skills/` folder
+- after changing service installation logic on macOS, rerun `setup -d` so the `launchd` plist is regenerated with the current shell-derived PATH
+- because the repo currently uses a root-level `main` package, `go run . ...` and `go build ...` are the expected development entrypoints
+
 ## Local State
 
 `vigilante` should maintain its local state under:
