@@ -9,6 +9,33 @@ import (
 
 func TestEnsureSkillInstalled(t *testing.T) {
 	dir := t.TempDir()
+	repoRoot := t.TempDir()
+	skillSourceDir := filepath.Join(repoRoot, "skills", vigilanteSkillName)
+	if err := os.MkdirAll(skillSourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sourceBody := "# repo skill\n"
+	if err := os.WriteFile(filepath.Join(skillSourceDir, "SKILL.md"), []byte(sourceBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(skillSourceDir, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agentBody := "interface:\n  display_name: test\n"
+	if err := os.WriteFile(filepath.Join(skillSourceDir, "agents", "openai.yaml"), []byte(agentBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
 	if err := EnsureSkillInstalled(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -17,8 +44,15 @@ func TestEnsureSkillInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "Comment on the GitHub issue") {
+	if string(data) != sourceBody {
 		t.Fatalf("unexpected skill body: %s", string(data))
+	}
+	agentData, err := os.ReadFile(filepath.Join(dir, "skills", vigilanteSkillName, "agents", "openai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(agentData) != agentBody {
+		t.Fatalf("unexpected agent body: %s", string(agentData))
 	}
 }
 

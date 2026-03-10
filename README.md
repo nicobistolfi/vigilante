@@ -18,7 +18,7 @@ Once a folder is registered, `vigilante` should:
 2. Poll or subscribe for open GitHub issues through `gh`.
 3. Select issues that are ready to work and not already being handled.
 4. Launch a headless Codex session in YOLO mode against a dedicated git worktree.
-5. Use the Codex issue implementation skill as part of the execution prompt.
+5. Use the Codex issue implementation skill from the repo `skills/` folder as part of the execution prompt.
 6. Post progress comments back to the GitHub issue, including session start and failures.
 7. Track watched repositories locally and optionally run as a daemon.
 
@@ -32,7 +32,7 @@ For each watched repository:
    - `git`
    - `gh`
    - `codex`
-4. Ensure the Codex issue implementation skill is installed during setup.
+4. Ensure the Codex issue implementation skill from `skills/vigilante-issue-implementation/` is installed during setup, including its companion agent metadata.
 5. Query GitHub for open issues.
 6. Determine which issues are eligible for execution.
 7. Create a git worktree for the selected issue.
@@ -102,7 +102,7 @@ Expected behavior:
 - creates `~/.vigilante/`
 - initializes `watchlist.json`
 - verifies `git`, `gh`, and `codex`
-- installs the Codex issue implementation skill if missing
+- installs the Codex issue implementation skill from the repo `skills/` folder if missing, including any companion files under that skill directory
 - installs or updates the daemon definition when requested
 
 ## Local State

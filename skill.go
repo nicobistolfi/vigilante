@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,25 +10,16 @@ import (
 
 const vigilanteSkillName = "vigilante-issue-implementation"
 
-const vigilanteSkillBody = `# Vigilante Issue Implementation
-
-Use this skill when Vigilante launches Codex for a GitHub issue.
-
-## Required Behavior
-
-1. Comment on the GitHub issue when the session begins.
-2. Continue posting concise progress comments at meaningful milestones.
-3. If work fails or is blocked, comment on the issue with the failure details.
-4. Implement the issue in the provided worktree and keep changes scoped to the issue.
-5. Prefer repository-native tooling and avoid unnecessary dependencies.
-`
-
 func EnsureSkillInstalled(codexHome string) error {
 	skillDir := filepath.Join(codexHome, "skills", vigilanteSkillName)
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+	sourceDir := repoSkillDir()
+	if _, err := os.Stat(filepath.Join(sourceDir, "SKILL.md")); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(vigilanteSkillBody), 0o644)
+	if err := os.RemoveAll(skillDir); err != nil {
+		return err
+	}
+	return copyDir(sourceDir, skillDir)
 }
 
 func BuildIssuePrompt(target WatchTarget, issue GitHubIssue, session Session) string {
@@ -43,4 +35,71 @@ func BuildIssuePrompt(target WatchTarget, issue GitHubIssue, session Session) st
 		"Use the issue as the source of truth for the requested behavior and keep the implementation minimal.",
 	}
 	return strings.Join(lines, "\n")
+}
+
+func repoSkillPath() string {
+	return filepath.Join(repoRoot(), "skills", vigilanteSkillName, "SKILL.md")
+}
+
+func repoSkillDir() string {
+	return filepath.Join(repoRoot(), "skills", vigilanteSkillName)
+}
+
+func repoRoot() string {
+	exe, err := os.Executable()
+	if err == nil {
+		dir := filepath.Dir(exe)
+		if _, statErr := os.Stat(filepath.Join(dir, "skills")); statErr == nil {
+			return dir
+		}
+	}
+
+	wd, err := os.Getwd()
+	if err == nil {
+		if _, statErr := os.Stat(filepath.Join(wd, "skills")); statErr == nil {
+			return wd
+		}
+	}
+
+	return "."
+}
+
+func copyDir(src string, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		return copyFile(path, target, info.Mode())
+	})
+}
+
+func copyFile(src string, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
