@@ -103,6 +103,7 @@ func TestWatchUpdatesExistingTarget(t *testing.T) {
 	var stdout bytes.Buffer
 	app.stdout = &stdout
 	app.stderr = testutil.IODiscard{}
+	app.env.OS = "darwin"
 	launchAgentPath := filepath.Join(home, "Library", "LaunchAgents", "com.vigilante.agent.plist")
 	app.env.Runner = testutil.FakeRunner{
 		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
