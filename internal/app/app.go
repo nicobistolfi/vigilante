@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nicobistolfi/vigilante/internal/environment"
@@ -26,6 +27,7 @@ import (
 
 const defaultScanInterval = 1 * time.Minute
 const defaultAssigneeFilter = "me"
+const defaultStalledSessionThreshold = 10 * time.Minute
 
 type App struct {
 	stdout io.Writer
@@ -326,6 +328,10 @@ func (a *App) ScanOnce(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		sessions, err = a.recoverStalledSessions(ctx, sessions)
+		if err != nil {
+			return err
+		}
 		sessions, err = a.maintainPullRequests(ctx, sessions)
 		if err != nil {
 			return err
@@ -364,16 +370,18 @@ func (a *App) ScanOnce(ctx context.Context) error {
 			a.state.AppendDaemonLog("scan repo worktree ready repo=%s issue=%d path=%s branch=%s", target.Repo, next.Number, wt.Path, wt.Branch)
 
 			session := state.Session{
-				RepoPath:     target.Path,
-				Repo:         target.Repo,
-				IssueNumber:  next.Number,
-				IssueTitle:   next.Title,
-				IssueURL:     next.URL,
-				Branch:       wt.Branch,
-				WorktreePath: wt.Path,
-				Status:       state.SessionStatusRunning,
-				StartedAt:    a.clock().Format(time.RFC3339),
-				UpdatedAt:    a.clock().Format(time.RFC3339),
+				RepoPath:        target.Path,
+				Repo:            target.Repo,
+				IssueNumber:     next.Number,
+				IssueTitle:      next.Title,
+				IssueURL:        next.URL,
+				Branch:          wt.Branch,
+				WorktreePath:    wt.Path,
+				Status:          state.SessionStatusRunning,
+				ProcessID:       os.Getpid(),
+				StartedAt:       a.clock().Format(time.RFC3339),
+				LastHeartbeatAt: a.clock().Format(time.RFC3339),
+				UpdatedAt:       a.clock().Format(time.RFC3339),
 			}
 			sessions = upsertSession(sessions, session)
 			if err := a.state.SaveSessions(sessions); err != nil {
@@ -404,6 +412,77 @@ func (a *App) ScanOnce(ctx context.Context) error {
 		return nil
 	}
 	return nil
+}
+
+func (a *App) recoverStalledSessions(ctx context.Context, sessions []state.Session) ([]state.Session, error) {
+	threshold := stalledSessionThreshold()
+
+	for i := range sessions {
+		session := &sessions[i]
+		if session.Status != state.SessionStatusRunning {
+			continue
+		}
+		if sessionProcessAlive(session.ProcessID) {
+			continue
+		}
+
+		stale, reason := isStalledSession(*session, a.clock(), threshold)
+		if !stale {
+			continue
+		}
+
+		pr, err := ghcli.FindPullRequestForBranch(ctx, a.env.Runner, session.Repo, session.Branch)
+		if err != nil {
+			return nil, err
+		}
+		if pr != nil {
+			session.Status = state.SessionStatusSuccess
+			session.ProcessID = 0
+			session.LastHeartbeatAt = ""
+			session.PullRequestNumber = pr.Number
+			session.PullRequestURL = pr.URL
+			session.PullRequestState = pr.State
+			if pr.MergedAt != nil {
+				session.PullRequestMergedAt = pr.MergedAt.UTC().Format(time.RFC3339)
+			}
+			session.LastError = ""
+			session.UpdatedAt = a.clock().Format(time.RFC3339)
+			a.state.AppendDaemonLog("stalled session recovered to pr maintenance repo=%s issue=%d branch=%s reason=%q pr=%d", session.Repo, session.IssueNumber, session.Branch, reason, pr.Number)
+			body := fmt.Sprintf("Vigilante detected that the previous local session for branch `%s` was stalled (%s). An existing PR #%d was found, so the issue was recovered into PR maintenance.", session.Branch, reason, pr.Number)
+			if err := ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		if err := worktree.CleanupIssueArtifacts(ctx, a.env.Runner, session.RepoPath, session.WorktreePath, session.Branch); err != nil {
+			session.LastError = fmt.Sprintf("stalled session detected (%s) but cleanup failed: %v", reason, err)
+			session.UpdatedAt = a.clock().Format(time.RFC3339)
+			session.CleanupError = err.Error()
+			a.state.AppendDaemonLog("stalled session cleanup failed repo=%s issue=%d branch=%s reason=%q err=%v", session.Repo, session.IssueNumber, session.Branch, reason, err)
+			body := fmt.Sprintf("Vigilante detected a stalled local session on branch `%s` (%s), but automatic cleanup failed: %s", session.Branch, reason, summarizeMaintenanceError(err))
+			if commentErr := ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body); commentErr != nil {
+				return nil, commentErr
+			}
+			continue
+		}
+
+		now := a.clock().Format(time.RFC3339)
+		session.Status = state.SessionStatusFailed
+		session.ProcessID = 0
+		session.LastHeartbeatAt = ""
+		session.CleanupError = ""
+		session.EndedAt = now
+		session.UpdatedAt = now
+		session.LastError = fmt.Sprintf("stalled session recovered: %s", reason)
+		a.state.AppendDaemonLog("stalled session recovered for redispatch repo=%s issue=%d branch=%s reason=%q", session.Repo, session.IssueNumber, session.Branch, reason)
+		body := fmt.Sprintf("Vigilante detected that the previous local session on branch `%s` was stalled (%s). The abandoned worktree state was cleaned up so the issue can be redispatched.", session.Branch, reason)
+		if err := ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body); err != nil {
+			return nil, err
+		}
+	}
+
+	return sessions, nil
 }
 
 func (a *App) maintainPullRequests(ctx context.Context, sessions []state.Session) ([]state.Session, error) {
@@ -521,6 +600,63 @@ func (a *App) maintainOpenPullRequest(ctx context.Context, session *state.Sessio
 
 	body := fmt.Sprintf("Vigilante rebased PR #%d onto the latest `origin/main`, reran `go test ./...`, and pushed `%s`.", pr.Number, session.Branch)
 	return ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body)
+}
+
+func stalledSessionThreshold() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("VIGILANTE_STALLED_SESSION_THRESHOLD"))
+	if raw == "" {
+		return defaultStalledSessionThreshold
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return defaultStalledSessionThreshold
+	}
+	return parsed
+}
+
+func isStalledSession(session state.Session, now time.Time, threshold time.Duration) (bool, string) {
+	if _, err := os.Stat(session.WorktreePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, "worktree path is missing"
+		}
+	}
+
+	lastActivity := sessionActivityTime(session)
+	if lastActivity.IsZero() {
+		return true, "session has no recorded heartbeat"
+	}
+	if now.Sub(lastActivity) < threshold {
+		return false, ""
+	}
+	if session.ProcessID > 0 {
+		return true, fmt.Sprintf("process %d is not running and the session has been idle since %s", session.ProcessID, lastActivity.Format(time.RFC3339))
+	}
+	return true, fmt.Sprintf("no active process is recorded and the session has been idle since %s", lastActivity.Format(time.RFC3339))
+}
+
+func sessionActivityTime(session state.Session) time.Time {
+	for _, raw := range []string{session.LastHeartbeatAt, session.UpdatedAt, session.StartedAt} {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+func sessionProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
 }
 
 func rebaseChangedHistory(output string) bool {

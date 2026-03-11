@@ -50,7 +50,9 @@ type Session struct {
 	MonitoringStoppedAt  string        `json:"monitoring_stopped_at,omitempty"`
 	CleanupCompletedAt   string        `json:"cleanup_completed_at,omitempty"`
 	CleanupError         string        `json:"cleanup_error,omitempty"`
+	ProcessID            int           `json:"process_id,omitempty"`
 	StartedAt            string        `json:"started_at,omitempty"`
+	LastHeartbeatAt      string        `json:"last_heartbeat_at,omitempty"`
 	EndedAt              string        `json:"ended_at,omitempty"`
 	UpdatedAt            string        `json:"updated_at,omitempty"`
 	LastError            string        `json:"last_error,omitempty"`
