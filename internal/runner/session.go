@@ -16,6 +16,8 @@ import (
 
 func RunIssueSession(ctx context.Context, env *environment.Environment, store *state.Store, target state.WatchTarget, issue ghcli.Issue, session state.Session) state.Session {
 	logPath := store.SessionLogPath(issue.Number)
+	session.ProcessID = os.Getpid()
+	session.LastHeartbeatAt = time.Now().UTC().Format(time.RFC3339)
 	session.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	startBody := fmt.Sprintf("Vigilante started a Codex session for this issue in `%s` on branch `%s`.", session.WorktreePath, session.Branch)
 	appendSessionLog(logPath, "session started", session, "")
@@ -39,6 +41,7 @@ func RunIssueSession(ctx context.Context, env *environment.Environment, store *s
 		prompt,
 	)
 	session.EndedAt = time.Now().UTC().Format(time.RFC3339)
+	session.LastHeartbeatAt = session.EndedAt
 	session.UpdatedAt = session.EndedAt
 	if err != nil {
 		session.Status = state.SessionStatusFailed

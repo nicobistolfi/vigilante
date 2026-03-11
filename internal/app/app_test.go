@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nicobistolfi/vigilante/internal/skill"
 	"github.com/nicobistolfi/vigilante/internal/state"
@@ -261,7 +262,15 @@ func TestScanOncePrintsNoEligibleIssues(t *testing.T) {
 	if err := app.state.SaveWatchTargets([]state.WatchTarget{{Path: "/tmp/repo", Repo: "owner/repo", Branch: "main", Assignee: "me", Labels: []string{"to-do"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.state.SaveSessions([]state.Session{{Repo: "owner/repo", IssueNumber: 1, Status: state.SessionStatusRunning}}); err != nil {
+	if err := app.state.SaveSessions([]state.Session{{
+		Repo:            "owner/repo",
+		IssueNumber:     1,
+		Status:          state.SessionStatusRunning,
+		ProcessID:       os.Getpid(),
+		StartedAt:       time.Now().UTC().Format(time.RFC3339),
+		LastHeartbeatAt: time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:       time.Now().UTC().Format(time.RFC3339),
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.ScanOnce(context.Background()); err != nil {
@@ -567,5 +576,148 @@ func TestScanOnceReturnsErrorWhenResolvingDefaultAssigneeFails(t *testing.T) {
 	}
 	if got := err.Error(); got != `resolve assignee "me": context deadline exceeded` {
 		t.Fatalf("unexpected error: %s", got)
+	}
+}
+
+func TestScanOnceRecoversStalledSessionAndRedispatchesIssue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+
+	var stdout bytes.Buffer
+	app := New()
+	app.stdout = &stdout
+	app.stderr = testutil.IODiscard{}
+	now := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
+	app.clock = func() time.Time { return now }
+
+	worktreePath := filepath.Join(home, "repo", ".worktrees", "vigilante", "issue-1")
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
+		Outputs: map[string]string{
+			"gh pr list --repo owner/repo --head vigilante/issue-1 --state all --json number,url,state,mergedAt": "[]",
+			"git worktree prune":                                         "ok",
+			"git worktree list --porcelain":                              "worktree /tmp/repo\nHEAD abcdef\nbranch refs/heads/main\n",
+			"git show-ref --verify --quiet refs/heads/vigilante/issue-1": "ok",
+			"git branch -D vigilante/issue-1":                            "Deleted branch vigilante/issue-1\n",
+			"gh issue comment --repo owner/repo 1 --body Vigilante detected that the previous local session on branch `vigilante/issue-1` was stalled (worktree path is missing). The abandoned worktree state was cleaned up so the issue can be redispatched.": "ok",
+			"gh api user --jq .login": "nicobistolfi\n",
+			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels":                                         `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[]}]`,
+			"git worktree add -b vigilante/issue-1 " + worktreePath + " main":                                                                                       "ok",
+			"git worktree add " + worktreePath + " vigilante/issue-1":                                                                                               "ok",
+			"gh issue comment --repo owner/repo 1 --body Vigilante started a Codex session for this issue in `" + worktreePath + "` on branch `vigilante/issue-1`.": "ok",
+			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + filepath.Join(home, "repo") + "\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: vigilante/issue-1\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+		},
+	}
+	if err := app.state.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveWatchTargets([]state.WatchTarget{{Path: filepath.Join(home, "repo"), Repo: "owner/repo", Branch: "main"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveSessions([]state.Session{{
+		RepoPath:        filepath.Join(home, "repo"),
+		Repo:            "owner/repo",
+		IssueNumber:     1,
+		IssueTitle:      "first",
+		IssueURL:        "https://github.com/owner/repo/issues/1",
+		Branch:          "vigilante/issue-1",
+		WorktreePath:    worktreePath,
+		Status:          state.SessionStatusRunning,
+		ProcessID:       999999,
+		StartedAt:       now.Add(-20 * time.Minute).Format(time.RFC3339),
+		LastHeartbeatAt: now.Add(-20 * time.Minute).Format(time.RFC3339),
+		UpdatedAt:       now.Add(-20 * time.Minute).Format(time.RFC3339),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ScanOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := app.state.LoadSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].Status != state.SessionStatusSuccess {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	if got := stdout.String(); !strings.Contains(got, "repo: owner/repo started issue #1 in "+worktreePath) {
+		t.Fatalf("unexpected output: %s", got)
+	}
+}
+
+func TestScanOnceRecoversStalledSessionIntoPRMaintenance(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+
+	var stdout bytes.Buffer
+	app := New()
+	app.stdout = &stdout
+	app.stderr = testutil.IODiscard{}
+	now := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
+	app.clock = func() time.Time { return now }
+
+	worktreePath := filepath.Join(home, "repo", ".worktrees", "vigilante", "issue-1")
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
+		Outputs: map[string]string{
+			"gh pr list --repo owner/repo --head vigilante/issue-1 --state all --json number,url,state,mergedAt":                                                                                                                                                  `[{"number":31,"url":"https://github.com/owner/repo/pull/31","state":"OPEN","mergedAt":null}]`,
+			"gh issue comment --repo owner/repo 1 --body Vigilante detected that the previous local session for branch `vigilante/issue-1` was stalled (worktree path is missing). An existing PR #31 was found, so the issue was recovered into PR maintenance.": "ok",
+			"git fetch origin main":   "ok",
+			"git status --porcelain":  "",
+			"git rebase origin/main":  "Current branch vigilante/issue-1 is up to date.\n",
+			"gh api user --jq .login": "nicobistolfi\n",
+			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": "[]",
+		},
+	}
+	if err := app.state.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveWatchTargets([]state.WatchTarget{{Path: filepath.Join(home, "repo"), Repo: "owner/repo", Branch: "main"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveSessions([]state.Session{{
+		RepoPath:        filepath.Join(home, "repo"),
+		Repo:            "owner/repo",
+		IssueNumber:     1,
+		IssueTitle:      "first",
+		IssueURL:        "https://github.com/owner/repo/issues/1",
+		Branch:          "vigilante/issue-1",
+		WorktreePath:    worktreePath,
+		Status:          state.SessionStatusRunning,
+		ProcessID:       999999,
+		StartedAt:       now.Add(-20 * time.Minute).Format(time.RFC3339),
+		LastHeartbeatAt: now.Add(-20 * time.Minute).Format(time.RFC3339),
+		UpdatedAt:       now.Add(-20 * time.Minute).Format(time.RFC3339),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ScanOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := app.state.LoadSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	if sessions[0].Status != state.SessionStatusSuccess {
+		t.Fatalf("expected success session after recovery: %#v", sessions[0])
+	}
+	if sessions[0].PullRequestNumber != 31 || sessions[0].LastMaintainedAt == "" {
+		t.Fatalf("expected PR maintenance tracking after recovery: %#v", sessions[0])
 	}
 }
