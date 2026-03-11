@@ -139,6 +139,7 @@ func TestWatchUpdatesExistingTarget(t *testing.T) {
 	repoPath := filepath.Join(home, "repo")
 	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
 	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/zsh")
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +148,7 @@ func TestWatchUpdatesExistingTarget(t *testing.T) {
 	var stdout bytes.Buffer
 	app.stdout = &stdout
 	app.stderr = testutil.IODiscard{}
+	app.env.OS = "darwin"
 	launchAgentPath := filepath.Join(home, "Library", "LaunchAgents", "com.vigilante.agent.plist")
 	app.env.Runner = testutil.FakeRunner{
 		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
