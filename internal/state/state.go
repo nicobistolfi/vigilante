@@ -12,12 +12,14 @@ import (
 )
 
 type WatchTarget struct {
-	Path          string `json:"path"`
-	Repo          string `json:"repo"`
-	Branch        string `json:"branch"`
-	DaemonEnabled bool   `json:"daemon_enabled"`
-	LastScanAt    string `json:"last_scan_at,omitempty"`
-	AddedAt       string `json:"added_at,omitempty"`
+	Path          string   `json:"path"`
+	Repo          string   `json:"repo"`
+	Branch        string   `json:"branch"`
+	Labels        []string `json:"labels,omitempty"`
+	Assignee      string   `json:"assignee,omitempty"`
+	DaemonEnabled bool     `json:"daemon_enabled"`
+	LastScanAt    string   `json:"last_scan_at,omitempty"`
+	AddedAt       string   `json:"added_at,omitempty"`
 }
 
 type SessionStatus string
@@ -29,23 +31,27 @@ const (
 )
 
 type Session struct {
-	RepoPath            string        `json:"repo_path"`
-	Repo                string        `json:"repo"`
-	IssueNumber         int           `json:"issue_number"`
-	IssueTitle          string        `json:"issue_title,omitempty"`
-	IssueURL            string        `json:"issue_url,omitempty"`
-	Branch              string        `json:"branch"`
-	WorktreePath        string        `json:"worktree_path"`
-	Status              SessionStatus `json:"status"`
-	PullRequestNumber   int           `json:"pull_request_number,omitempty"`
-	PullRequestURL      string        `json:"pull_request_url,omitempty"`
-	PullRequestMergedAt string        `json:"pull_request_merged_at,omitempty"`
-	CleanupCompletedAt  string        `json:"cleanup_completed_at,omitempty"`
-	CleanupError        string        `json:"cleanup_error,omitempty"`
-	StartedAt           string        `json:"started_at,omitempty"`
-	EndedAt             string        `json:"ended_at,omitempty"`
-	UpdatedAt           string        `json:"updated_at,omitempty"`
-	LastError           string        `json:"last_error,omitempty"`
+	RepoPath             string        `json:"repo_path"`
+	Repo                 string        `json:"repo"`
+	IssueNumber          int           `json:"issue_number"`
+	IssueTitle           string        `json:"issue_title,omitempty"`
+	IssueURL             string        `json:"issue_url,omitempty"`
+	Branch               string        `json:"branch"`
+	WorktreePath         string        `json:"worktree_path"`
+	Status               SessionStatus `json:"status"`
+	PullRequestNumber    int           `json:"pull_request_number,omitempty"`
+	PullRequestURL       string        `json:"pull_request_url,omitempty"`
+	PullRequestState     string        `json:"pull_request_state,omitempty"`
+	PullRequestMergedAt  string        `json:"pull_request_merged_at,omitempty"`
+	LastMaintainedAt     string        `json:"last_maintained_at,omitempty"`
+	LastMaintenanceError string        `json:"last_maintenance_error,omitempty"`
+	MonitoringStoppedAt  string        `json:"monitoring_stopped_at,omitempty"`
+	CleanupCompletedAt   string        `json:"cleanup_completed_at,omitempty"`
+	CleanupError         string        `json:"cleanup_error,omitempty"`
+	StartedAt            string        `json:"started_at,omitempty"`
+	EndedAt              string        `json:"ended_at,omitempty"`
+	UpdatedAt            string        `json:"updated_at,omitempty"`
+	LastError            string        `json:"last_error,omitempty"`
 }
 
 type Store struct {

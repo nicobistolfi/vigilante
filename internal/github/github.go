@@ -17,16 +17,28 @@ type Issue struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"createdAt"`
 	URL       string    `json:"url"`
+	Labels    []Label   `json:"labels"`
+}
+
+type Label struct {
+	Name string `json:"name"`
 }
 
 type PullRequest struct {
 	Number   int        `json:"number"`
 	URL      string     `json:"url"`
+	State    string     `json:"state"`
 	MergedAt *time.Time `json:"mergedAt"`
 }
 
-func ListOpenIssues(ctx context.Context, runner environment.Runner, repo string) ([]Issue, error) {
-	output, err := runner.Run(ctx, "", "gh", "issue", "list", "--repo", repo, "--state", "open", "--json", "number,title,createdAt,url")
+func ListOpenIssues(ctx context.Context, runner environment.Runner, repo string, assignee string) ([]Issue, error) {
+	args := []string{"issue", "list", "--repo", repo, "--state", "open"}
+	if assignee != "" {
+		args = append(args, "--assignee", assignee)
+	}
+	args = append(args, "--json", "number,title,createdAt,url,labels")
+	output, err := runner.Run(ctx, "", "gh", args...)
+
 	if err != nil {
 		return nil, err
 	}
@@ -40,19 +52,38 @@ func ListOpenIssues(ctx context.Context, runner environment.Runner, repo string)
 	return issues, nil
 }
 
-func SelectNextIssue(issues []Issue, sessions []state.Session, repo string) *Issue {
+func SelectNextIssue(issues []Issue, sessions []state.Session, target state.WatchTarget) *Issue {
 	active := map[int]bool{}
 	for _, session := range sessions {
-		if session.Repo == repo && session.Status == state.SessionStatusRunning {
+		if session.Repo == target.Repo && session.Status == state.SessionStatusRunning {
 			active[session.IssueNumber] = true
 		}
 	}
 	for i := range issues {
-		if !active[issues[i].Number] {
-			return &issues[i]
+		if active[issues[i].Number] {
+			continue
 		}
+		if !matchesLabelAllowlist(issues[i], target.Labels) {
+			continue
+		}
+		return &issues[i]
 	}
 	return nil
+}
+
+func matchesLabelAllowlist(issue Issue, allowlist []string) bool {
+	if len(allowlist) == 0 {
+		return true
+	}
+
+	for _, configured := range allowlist {
+		for _, label := range issue.Labels {
+			if label.Name == configured {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func CommentOnIssue(ctx context.Context, runner environment.Runner, repo string, number int, body string) error {
@@ -61,7 +92,7 @@ func CommentOnIssue(ctx context.Context, runner environment.Runner, repo string,
 }
 
 func FindPullRequestForBranch(ctx context.Context, runner environment.Runner, repo string, branch string) (*PullRequest, error) {
-	output, err := runner.Run(ctx, "", "gh", "pr", "list", "--repo", repo, "--head", branch, "--state", "all", "--json", "number,url,mergedAt")
+	output, err := runner.Run(ctx, "", "gh", "pr", "list", "--repo", repo, "--head", branch, "--state", "all", "--json", "number,url,state,mergedAt")
 	if err != nil {
 		return nil, err
 	}
