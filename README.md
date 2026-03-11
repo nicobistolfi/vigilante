@@ -158,6 +158,28 @@ Notes:
 - after changing service installation logic on macOS, rerun `setup -d` so the `launchd` plist is regenerated with the current shell-derived PATH
 - the CLI entrypoint lives in `cmd/vigilante/`, while non-exported implementation packages live under `internal/`
 
+## CI and Releases
+
+Pull requests are validated in GitHub Actions with native Go commands:
+
+- `gofmt -l .`
+- `go vet ./...`
+- `go test ./...`
+- `go build ./...`
+
+Releases are created by pushing a version tag that matches `{x}.{y}.{z}` and points to a commit already reachable from `main`.
+
+Recommended release flow:
+
+```sh
+git checkout main
+git pull --ff-only
+git tag 1.2.3
+git push origin 1.2.3
+```
+
+Tags outside the version format, such as `v1.2.3` or `release-1.2.3`, do not trigger the release workflow.
+
 ## Local State
 
 `vigilante` should maintain its local state under:

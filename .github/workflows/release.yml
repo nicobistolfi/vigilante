@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '+([0-9]).+([0-9]).+([0-9])'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify tag policy
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if ! printf '%s\n' "$TAG_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Release tags must use the format {x}.{y}.{z}."
+            exit 1
+          fi
+
+          git fetch origin main
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "Release tags must point to a commit already merged into main."
+            exit 1
+          fi
+
+      - name: Build release archives
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+
+          for target in darwin/arm64 darwin/amd64 linux/amd64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            PACKAGE_DIR="dist/vigilante_${TAG_NAME}_${GOOS}_${GOARCH}"
+
+            mkdir -p "$PACKAGE_DIR"
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -o "$PACKAGE_DIR/vigilante" ./cmd/vigilante
+            tar -C dist -czf "${PACKAGE_DIR}.tar.gz" "$(basename "$PACKAGE_DIR")"
+            rm -rf "$PACKAGE_DIR"
+          done
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: gh release create "$TAG_NAME" dist/*.tar.gz --generate-notes --title "$TAG_NAME"
