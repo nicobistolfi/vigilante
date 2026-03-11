@@ -108,7 +108,7 @@ Expected behavior:
 - creates `~/.vigilante/`
 - initializes `watchlist.json`
 - verifies `git`, `gh`, and `codex`
-- installs the Codex issue implementation skill from the repo `skills/` folder if missing, including any companion files under that skill directory
+- installs the bundled Codex skills for regular runtime use, including any companion files under each skill directory
 - installs or updates the daemon definition when requested
 
 ## Development Mode
@@ -155,7 +155,8 @@ go build -o /Users/$USER/.local/bin/vigilante ./cmd/vigilante
 Notes:
 
 - foreground runs are the quickest way to iterate on scheduler, worktree, and Codex execution behavior
-- `setup` refreshes the installed skill from the repo `skills/` folder
+- when `vigilante` runs from a repository checkout, `setup` refreshes installed skills from the local repo `skills/` folder so skill edits are picked up immediately
+- when `vigilante` runs as an installed binary outside the repo checkout, `setup` uses skills embedded in the binary so it works from any directory without depending on the source tree
 - after changing service installation logic on macOS, rerun `setup -d` so the `launchd` plist is regenerated with the current shell-derived PATH
 - the CLI entrypoint lives in `cmd/vigilante/`, while non-exported implementation packages live under `internal/`
 
