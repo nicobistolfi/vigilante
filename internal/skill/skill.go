@@ -3,10 +3,12 @@ package skill
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	skillassets "github.com/nicobistolfi/vigilante"
 	ghcli "github.com/nicobistolfi/vigilante/internal/github"
 	"github.com/nicobistolfi/vigilante/internal/state"
 )
@@ -17,14 +19,14 @@ const VigilanteConflictResolution = "vigilante-conflict-resolution"
 func EnsureInstalled(codexHome string) error {
 	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
 		skillDir := filepath.Join(codexHome, "skills", name)
-		sourceDir := repoSkillDir(name)
-		if _, err := os.Stat(filepath.Join(sourceDir, "SKILL.md")); err != nil {
+		source, err := resolveSkillSource(name)
+		if err != nil {
 			return err
 		}
 		if err := os.RemoveAll(skillDir); err != nil {
 			return err
 		}
-		if err := copyDir(sourceDir, skillDir); err != nil {
+		if err := source.install(skillDir); err != nil {
 			return err
 		}
 	}
@@ -70,6 +72,38 @@ func repoSkillPath(name string) string {
 
 func repoSkillDir(name string) string {
 	return filepath.Join(repoRoot(), "skills", name)
+}
+
+type skillSource interface {
+	install(dst string) error
+}
+
+type dirSkillSource string
+
+func (s dirSkillSource) install(dst string) error {
+	return copyDir(string(s), dst)
+}
+
+type embeddedSkillSource struct {
+	root string
+	fs   fs.FS
+}
+
+func (s embeddedSkillSource) install(dst string) error {
+	return copyFS(s.fs, s.root, dst)
+}
+
+func resolveSkillSource(name string) (skillSource, error) {
+	sourceDir := repoSkillDir(name)
+	if _, err := os.Stat(filepath.Join(sourceDir, "SKILL.md")); err == nil {
+		return dirSkillSource(sourceDir), nil
+	}
+
+	root := filepath.ToSlash(filepath.Join("skills", name))
+	if _, err := fs.Stat(skillassets.Skills, pathJoin(root, "SKILL.md")); err != nil {
+		return nil, err
+	}
+	return embeddedSkillSource{root: root, fs: skillassets.Skills}, nil
 }
 
 func repoRoot() string {
@@ -121,6 +155,52 @@ func copyDir(src string, dst string) error {
 	})
 }
 
+func copyFS(source fs.FS, root string, dst string) error {
+	return fs.WalkDir(source, root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(filepath.FromSlash(root), filepath.FromSlash(path))
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		return copyFSFile(source, path, target, info.Mode())
+	})
+}
+
+func copyFSFile(source fs.FS, src string, dst string, mode os.FileMode) error {
+	in, err := source.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
+}
+
 func copyFile(src string, dst string, mode os.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -142,4 +222,8 @@ func copyFile(src string, dst string, mode os.FileMode) error {
 		return err
 	}
 	return out.Close()
+}
+
+func pathJoin(parts ...string) string {
+	return strings.Join(parts, "/")
 }
