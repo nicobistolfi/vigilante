@@ -291,6 +291,7 @@ func TestScanOnceSkipsRedispatchForMaintainedIssueAndStartsNextEligibleIssue(t *
 	app.env.Runner = testutil.FakeRunner{
 		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
 		Outputs: map[string]string{
+			"gh api user --jq .login": "nicobistolfi\n",
 			"gh pr list --repo owner/repo --head vigilante/issue-1 --state all --json number,url,state,mergedAt": `[{"number":31,"url":"https://github.com/owner/repo/pull/31","state":"OPEN","mergedAt":null}]`,
 			"git fetch origin main":  "ok",
 			"git status --porcelain": "",
@@ -298,7 +299,7 @@ func TestScanOnceSkipsRedispatchForMaintainedIssueAndStartsNextEligibleIssue(t *
 			"go test ./...":          "ok",
 			"git push --force-with-lease origin HEAD:vigilante/issue-1": "ok",
 			"gh issue comment --repo owner/repo 1 --body Vigilante rebased PR #31 onto the latest `origin/main`, reran `go test ./...`, and pushed `vigilante/issue-1`.": "ok",
-			"gh issue list --repo owner/repo --state open --assignee me --json number,title,createdAt,url,labels":                                                        `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[{"name":"to-do"}]},{"number":2,"title":"second","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo/issues/2","labels":[{"name":"to-do"}]}]`,
+			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels":                                              `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[{"name":"to-do"}]},{"number":2,"title":"second","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo/issues/2","labels":[{"name":"to-do"}]}]`,
 			"git worktree prune": "ok",
 			"git worktree add -b vigilante/issue-2 " + worktreePath2 + " main":                                                                                       "ok",
 			"gh issue comment --repo owner/repo 2 --body Vigilante started a Codex session for this issue in `" + worktreePath2 + "` on branch `vigilante/issue-2`.": "ok",
