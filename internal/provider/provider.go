@@ -34,6 +34,7 @@ type Provider interface {
 	DisplayName() string
 	RequiredTools() []string
 	EnsureRuntimeInstalled(store *state.Store) error
+	BuildIssuePreflightInvocation(task IssueTask) (Invocation, error)
 	BuildIssueInvocation(task IssueTask) (Invocation, error)
 	BuildConflictResolutionInvocation(task ConflictTask) (Invocation, error)
 }

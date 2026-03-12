@@ -1066,6 +1066,22 @@ func (a *App) resumeBlockedIssueExecution(ctx context.Context, session *state.Se
 	if err != nil {
 		return err
 	}
+	if session.BlockedStage == "baseline_preflight" {
+		preflightInvocation, err := selectedProvider.BuildIssuePreflightInvocation(provider.IssueTask{
+			Target:  target,
+			Issue:   issue,
+			Session: *session,
+		})
+		if err != nil {
+			return err
+		}
+		preflightOutput, err := a.env.Runner.Run(ctx, preflightInvocation.Dir, preflightInvocation.Name, preflightInvocation.Args...)
+		if err != nil {
+			a.state.AppendDaemonLog("resume issue preflight failed repo=%s issue=%d err=%v output=%s", session.Repo, session.IssueNumber, err, summarizeText(preflightOutput))
+			return err
+		}
+		a.state.AppendDaemonLog("resume issue preflight succeeded repo=%s issue=%d output=%s", session.Repo, session.IssueNumber, summarizeText(preflightOutput))
+	}
 	invocation, err := selectedProvider.BuildIssueInvocation(provider.IssueTask{
 		Target:  target,
 		Issue:   issue,
@@ -1249,11 +1265,11 @@ func classifyBlockedReason(stage string, operation string, err error) state.Bloc
 		reason.Kind = "provider_missing"
 	case strings.Contains(text, "worktree is not clean"):
 		reason.Kind = "dirty_worktree"
-	case strings.Contains(text, "go test") || strings.Contains(text, "validation"):
+	case strings.Contains(text, "go test") || strings.Contains(text, "validation") || strings.Contains(text, "build failed") || strings.Contains(text, "tests failed"):
 		reason.Kind = "validation_failed"
 	case strings.Contains(text, "network is unreachable") || strings.Contains(text, "timed out"):
 		reason.Kind = "network_unreachable"
-	case stage == "issue_execution" || stage == "conflict_resolution":
+	case stage == "issue_execution" || stage == "conflict_resolution" || stage == "baseline_preflight":
 		reason.Kind = "provider_runtime_error"
 	}
 	return reason
