@@ -131,9 +131,9 @@ func TestEnsureInstalledUsesEmbeddedAssetsOutsideRepo(t *testing.T) {
 func TestBuildIssuePrompt(t *testing.T) {
 	target := state.WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
-	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12"}
+	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "Codex"}
 	prompt := BuildIssuePrompt(target, issue, session)
-	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "10-cell progress bar", "ETA: ~N minutes"} {
+	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "Coding Agent Launched: Codex", "10-cell progress bar", "ETA: ~N minutes"} {
 		if !strings.Contains(prompt, text) {
 			t.Fatalf("prompt missing %q: %s", text, prompt)
 		}

@@ -81,6 +81,7 @@ Require these inputs from Vigilante:
 ## GitHub Commenting Rules
 - Use `gh issue comment` for all issue updates.
 - Always comment when the session starts.
+- For the coding-agent start comment, use a distinct launch title such as `## 🕹️ Coding Agent Launched: Codex` instead of a generic `Session Start` header.
 - Always add a short implementation plan comment before substantial coding work begins.
 - Add progress comments for non-trivial implementations as milestones are reached.
 - Comment when the PR is opened.

@@ -43,6 +43,7 @@ func EnsureInstalled(codexHome string) error {
 }
 
 func BuildIssuePrompt(target state.WatchTarget, issue ghcli.Issue, session state.Session) string {
+	providerName := displayProviderName(session.Provider)
 	lines := []string{
 		fmt.Sprintf("Use the `%s` skill for this task.", VigilanteIssueImplementation),
 		fmt.Sprintf("Repository: %s", target.Repo),
@@ -52,10 +53,28 @@ func BuildIssuePrompt(target state.WatchTarget, issue ghcli.Issue, session state
 		fmt.Sprintf("Worktree path: %s", session.WorktreePath),
 		fmt.Sprintf("Branch: %s", session.Branch),
 		"Use `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.",
+		fmt.Sprintf("For the coding-agent start comment, use `## 🕹️ Coding Agent Launched: %s` instead of a generic session-start title.", providerName),
 		"Use the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.",
 		"Use the issue as the source of truth for the requested behavior and keep the implementation minimal.",
 	}
 	return strings.Join(lines, "\n")
+}
+
+func displayProviderName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "Configured Coding Agent"
+	}
+	parts := strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
+	}
+	return strings.Join(parts, " ")
 }
 
 func BuildConflictResolutionPrompt(target state.WatchTarget, session state.Session, pr ghcli.PullRequest) string {

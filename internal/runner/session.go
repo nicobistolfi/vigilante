@@ -34,14 +34,14 @@ func RunIssueSession(ctx context.Context, env *environment.Environment, store *s
 	session.LastHeartbeatAt = time.Now().UTC().Format(time.RFC3339)
 	session.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	startBody := ghcli.FormatProgressComment(ghcli.ProgressComment{
-		Stage:      "Session Start",
-		Emoji:      "🚦",
+		Stage:      "Vigilante Session Start",
+		Emoji:      "🧢",
 		Percent:    20,
 		ETAMinutes: 25,
 		Items: []string{
 			fmt.Sprintf("Vigilante launched this implementation session in `%s`.", session.WorktreePath),
 			fmt.Sprintf("Branch: `%s`.", session.Branch),
-			fmt.Sprintf("Current stage: handing the issue off to the configured coding agent (`%s`) for investigation and implementation.", selectedProvider.ID()),
+			fmt.Sprintf("Current stage: handing the issue off to the configured coding agent (`%s`) for investigation and implementation.", selectedProvider.DisplayName()),
 		},
 		Tagline: "Make it simple, but significant.",
 	})
