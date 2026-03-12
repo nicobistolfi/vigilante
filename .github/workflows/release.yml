@@ -47,7 +47,17 @@ jobs:
       - name: Validate GoReleaser config
         run: goreleaser check
 
+      - name: Get token for Homebrew tap
+        uses: actions/create-github-app-token@v2
+        id: tap_token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-spaceship
+
       - name: Build and publish GitHub release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ steps.tap_token.outputs.token }}
         run: goreleaser release --clean
