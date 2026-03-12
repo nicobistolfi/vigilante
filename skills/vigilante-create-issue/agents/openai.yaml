@@ -1,0 +1,5 @@
+interface:
+  display_name: Vigilante Create Issue
+model: gpt-5
+behavior:
+  default_prompt: "Use $vigilante-create-issue to turn the user's request into an implementation-ready GitHub issue for Vigilante."
