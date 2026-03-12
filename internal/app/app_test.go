@@ -132,7 +132,7 @@ func TestWatchListAndUnwatch(t *testing.T) {
 	if !strings.Contains(stdout.String(), "\"assignee\": \"me\"") {
 		t.Fatalf("expected default assignee in list output: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "\"max_parallel_sessions\": 1") {
+	if !strings.Contains(stdout.String(), "\"max_parallel_sessions\": 3") {
 		t.Fatalf("expected default max_parallel_sessions in list output: %s", stdout.String())
 	}
 

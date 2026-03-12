@@ -83,7 +83,7 @@ Expected behavior:
 - validates the folder is a git repository
 - discovers the GitHub remote from git config
 - defaults the assignee filter to `me` unless overridden
-- defaults `--max-parallel` to `1` when not configured
+- defaults `--max-parallel` to `3` when not configured
 - resolves `me` to the authenticated GitHub login at runtime before issue queries
 - stores the target in `~/.vigilante/watchlist.json`
 
@@ -287,7 +287,7 @@ Suggested `watchlist.json` shape:
     "repo": "owner/hello-world-app",
     "branch": "main",
     "assignee": "me",
-    "max_parallel_sessions": 1,
+    "max_parallel_sessions": 3,
     "daemon_enabled": true,
     "last_scan_at": "2026-03-10T12:00:00Z"
   }
