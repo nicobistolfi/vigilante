@@ -133,7 +133,7 @@ func TestBuildIssuePrompt(t *testing.T) {
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
 	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "Codex"}
 	prompt := BuildIssuePrompt(target, issue, session)
-	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "Coding Agent Launched: Codex", "10-cell progress bar", "ETA: ~N minutes"} {
+	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "Coding Agent Launched: Codex", "10-cell progress bar", "ETA: ~N minutes", "no Turborepo markers were detected"} {
 		if !strings.Contains(prompt, text) {
 			t.Fatalf("prompt missing %q: %s", text, prompt)
 		}
@@ -153,8 +153,10 @@ func TestBuildIssuePromptUsesTurborepoSkillWhenMarkersPresent(t *testing.T) {
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
 	session := state.Session{WorktreePath: root, Branch: "vigilante/issue-12", Provider: "Codex"}
 	prompt := BuildIssuePrompt(target, issue, session)
-	if !strings.Contains(prompt, "Use the `turborepo-issue-implementation` skill") {
-		t.Fatalf("expected turborepo issue skill, got: %s", prompt)
+	for _, text := range []string{"Use the `turborepo-issue-implementation` skill", "Turborepo markers were detected", "smallest relevant workspace"} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("prompt missing %q: %s", text, prompt)
+		}
 	}
 }
 
@@ -171,8 +173,10 @@ func TestBuildIssuePromptUsesRepoPathWhenWorktreeMarkersAreAbsent(t *testing.T) 
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
 	session := state.Session{WorktreePath: t.TempDir(), Branch: "vigilante/issue-12", Provider: "Codex"}
 	prompt := BuildIssuePrompt(target, issue, session)
-	if !strings.Contains(prompt, "Use the `turborepo-issue-implementation` skill") {
-		t.Fatalf("expected turborepo issue skill from repo markers, got: %s", prompt)
+	for _, text := range []string{"Use the `turborepo-issue-implementation` skill", "Turborepo markers were detected"} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("prompt missing %q: %s", text, prompt)
+		}
 	}
 }
 
@@ -185,8 +189,12 @@ func TestSelectIssueImplementationSkillDetectsPackageJSONWorkspaces(t *testing.T
 		t.Fatal(err)
 	}
 
-	if got := SelectIssueImplementationSkill(root, ""); got != TurborepoIssueImplementation {
+	got, note := SelectIssueImplementationSkill(root, "")
+	if got != TurborepoIssueImplementation {
 		t.Fatalf("got %s want %s", got, TurborepoIssueImplementation)
+	}
+	if !strings.Contains(note, "Turborepo markers were detected") {
+		t.Fatalf("unexpected routing note: %s", note)
 	}
 }
 
@@ -199,15 +207,23 @@ func TestSelectIssueImplementationSkillDetectsPackageJSONWorkspaceObject(t *test
 		t.Fatal(err)
 	}
 
-	if got := SelectIssueImplementationSkill(root, ""); got != TurborepoIssueImplementation {
+	got, note := SelectIssueImplementationSkill(root, "")
+	if got != TurborepoIssueImplementation {
 		t.Fatalf("got %s want %s", got, TurborepoIssueImplementation)
+	}
+	if !strings.Contains(note, "Turborepo markers were detected") {
+		t.Fatalf("unexpected routing note: %s", note)
 	}
 }
 
 func TestSelectIssueImplementationSkillFallsBackWhenMarkersAbsent(t *testing.T) {
 	root := t.TempDir()
-	if got := SelectIssueImplementationSkill(root, ""); got != VigilanteIssueImplementation {
+	got, note := SelectIssueImplementationSkill(root, "")
+	if got != VigilanteIssueImplementation {
 		t.Fatalf("got %s want %s", got, VigilanteIssueImplementation)
+	}
+	if !strings.Contains(note, "no Turborepo markers were detected") {
+		t.Fatalf("unexpected routing note: %s", note)
 	}
 }
 
