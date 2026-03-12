@@ -158,12 +158,44 @@ func TestBuildIssuePromptUsesTurborepoSkillWhenMarkersPresent(t *testing.T) {
 	}
 }
 
+func TestBuildIssuePromptUsesRepoPathWhenWorktreeMarkersAreAbsent(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, "turbo.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "pnpm-workspace.yaml"), []byte("packages:\n  - apps/*\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	target := state.WatchTarget{Path: repoRoot, Repo: "owner/repo"}
+	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
+	session := state.Session{WorktreePath: t.TempDir(), Branch: "vigilante/issue-12", Provider: "Codex"}
+	prompt := BuildIssuePrompt(target, issue, session)
+	if !strings.Contains(prompt, "Use the `turborepo-issue-implementation` skill") {
+		t.Fatalf("expected turborepo issue skill from repo markers, got: %s", prompt)
+	}
+}
+
 func TestSelectIssueImplementationSkillDetectsPackageJSONWorkspaces(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "turbo.json"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{\"workspaces\":[\"apps/*\",\"packages/*\"]}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := SelectIssueImplementationSkill(root, ""); got != TurborepoIssueImplementation {
+		t.Fatalf("got %s want %s", got, TurborepoIssueImplementation)
+	}
+}
+
+func TestSelectIssueImplementationSkillDetectsPackageJSONWorkspaceObject(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "turbo.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte("{\"workspaces\":{\"packages\":[\"apps/*\",\"packages/*\"]}}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +241,15 @@ func TestEmbeddedTurborepoSkillDocumentsScopedValidationAndDatabaseLaunch(t *tes
 		t.Fatal(err)
 	}
 	text := string(body)
-	for _, snippet := range []string{"smallest relevant workspace", "pnpm --filter <workspace> test", "turbo run build --filter <workspace>", "docker-compose-launch"} {
+	for _, snippet := range []string{
+		"smallest relevant workspace",
+		"apps/*",
+		"packages/*",
+		"selected workspace(s)",
+		"pnpm --filter <workspace> test",
+		"turbo run build --filter <workspace>",
+		"docker-compose-launch",
+	} {
 		if !strings.Contains(text, snippet) {
 			t.Fatalf("embedded Turborepo skill missing %q: %s", snippet, text)
 		}
