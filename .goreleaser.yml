@@ -32,8 +32,20 @@ checksum:
 
 release:
   github:
-    owner: nicobistolfi
+    owner: aliengiraffe
     name: vigilante
+
+homebrew_casks:
+  - name: vigilante
+    repository:
+      owner: aliengiraffe
+      name: homebrew-spaceship
+      token: "{{ .Env.HOMEBREW_GITHUB_API_TOKEN }}"
+    homepage: "https://github.com/aliengiraffe/vigilante"
+    description: "Autonomous GitHub issue runner for headless coding agents"
+    license: "Apache-2.0"
+    binaries:
+      - vigilante
 
 changelog:
   use: github-native

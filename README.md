@@ -58,6 +58,21 @@ For each watched repository:
 
 ## Commands
 
+## Installation
+
+Install `vigilante` from the existing Homebrew tap:
+
+```sh
+brew tap aliengiraffe/spaceship
+brew install --cask vigilante
+```
+
+Upgrade later with:
+
+```sh
+brew upgrade --cask vigilante
+```
+
 ### `vigilante watch [--assignee <value>] [--max-parallel <value>] <path>`
 
 Register a local repository for issue monitoring.
@@ -217,6 +232,14 @@ Tagged releases are built and published with GoReleaser. Pushing a version tag t
 - `darwin/arm64`
 - `linux/amd64`
 - a `checksums.txt` file for the published archives
+- an updated Homebrew cask in `aliengiraffe/homebrew-spaceship` so `brew install --cask vigilante` installs the tagged release from `aliengiraffe/spaceship`
+
+The release workflow requires a GitHub App that can write to the tap repository:
+
+- `APP_ID`: the GitHub App ID
+- `APP_PRIVATE_KEY`: the GitHub App private key
+
+During a tagged release, GitHub Actions exchanges those secrets for a short-lived token scoped to `aliengiraffe/homebrew-spaceship` and passes it to GoReleaser as `HOMEBREW_GITHUB_API_TOKEN`.
 
 Recommended release flow:
 
@@ -228,6 +251,18 @@ git push origin 1.2.3
 ```
 
 Tags that do not match the required version format, such as `v1.2.3` or `release-1.2.3`, may start the release workflow but are rejected by the tag validation step before GoReleaser publishes artifacts. The release workflow also validates that the tagged commit is already merged into `main` before publishing to GitHub Releases.
+
+Before cutting a release, validate the packaging config locally with:
+
+```sh
+goreleaser check
+```
+
+You can also confirm the Homebrew cask will target the published release archive names by checking the GoReleaser archive template:
+
+- `vigilante_<version>_macOS_amd64.tar.gz`
+- `vigilante_<version>_macOS_arm64.tar.gz`
+- `vigilante_<version>_Linux_amd64.tar.gz`
 
 ## Local State
 
