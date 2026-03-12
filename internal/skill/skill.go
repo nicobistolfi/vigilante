@@ -16,12 +16,14 @@ import (
 const VigilanteIssueImplementation = "vigilante-issue-implementation"
 const VigilanteConflictResolution = "vigilante-conflict-resolution"
 const VigilanteCreateIssue = "vigilante-create-issue"
+const DockerComposeLaunch = "docker-compose-launch"
 
 func VigilanteSkillNames() []string {
 	return []string{
 		VigilanteIssueImplementation,
 		VigilanteConflictResolution,
 		VigilanteCreateIssue,
+		DockerComposeLaunch,
 	}
 }
 

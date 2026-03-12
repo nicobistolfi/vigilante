@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docker Compose Launch"
+  short_description: "Launch worktree-local database dependencies with repository compose reuse or generated fallback"
+  default_prompt: "Use $docker-compose-launch to start the required local database services inside the assigned worktree, prefer repository compose assets when suitable, fall back to a generated minimal compose file when needed, and report connection details and cleanup expectations."

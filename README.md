@@ -165,6 +165,7 @@ Expected behavior:
   - `vigilante-issue-implementation`
   - `vigilante-conflict-resolution`
   - `vigilante-create-issue`
+  - `docker-compose-launch`
 - installs or updates the daemon definition when requested
 
 ## Development Mode
