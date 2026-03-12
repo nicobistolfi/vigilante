@@ -856,7 +856,7 @@ func (a *App) processGitHubResumeRequests(ctx context.Context, sessions []state.
 		if comment == nil {
 			continue
 		}
-		if err := ghcli.AddIssueCommentReaction(ctx, a.env.Runner, session.Repo, comment.ID, "salute"); err != nil {
+		if err := ghcli.AddIssueCommentReaction(ctx, a.env.Runner, session.Repo, comment.ID, "eyes"); err != nil {
 			a.recordSessionFailure(session, fallbackText(session.BlockedStage, "issue_execution"), "gh api issue comment reactions", err)
 			a.state.AppendDaemonLog("resume reaction failed repo=%s issue=%d comment=%d err=%v", session.Repo, session.IssueNumber, comment.ID, err)
 			continue
