@@ -12,6 +12,7 @@ import (
 	"time"
 
 	ghcli "github.com/nicobistolfi/vigilante/internal/github"
+	"github.com/nicobistolfi/vigilante/internal/repo"
 	"github.com/nicobistolfi/vigilante/internal/skill"
 	"github.com/nicobistolfi/vigilante/internal/state"
 	"github.com/nicobistolfi/vigilante/internal/testutil"
@@ -102,6 +103,9 @@ func TestWatchListAndUnwatch(t *testing.T) {
 	if err := os.MkdirAll(repoPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repoPath, "turbo.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	app := New()
 	var stdout bytes.Buffer
@@ -134,6 +138,17 @@ func TestWatchListAndUnwatch(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "\"max_parallel_sessions\": 3") {
 		t.Fatalf("expected default max_parallel_sessions in list output: %s", stdout.String())
+	}
+
+	targets, err := app.state.LoadWatchTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("unexpected targets: %#v", targets)
+	}
+	if targets[0].Profile.Shape != repo.ShapeMonorepo || targets[0].Profile.MonorepoStack != repo.MonorepoStackTurborepo {
+		t.Fatalf("expected persisted monorepo profile, got %#v", targets[0].Profile)
 	}
 
 	if err := app.Unwatch(repoPath); err != nil {

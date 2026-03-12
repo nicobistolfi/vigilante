@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nicobistolfi/vigilante/internal/repo"
 )
 
 func TestTryWithScanLockIsExclusive(t *testing.T) {
@@ -68,5 +70,49 @@ func TestWatchTargetMaxParallelDefaultsToSharedValue(t *testing.T) {
 	}
 	if got := normalizeMaxParallelSessions(1); got != 1 {
 		t.Fatalf("expected explicit max_parallel_sessions to be preserved, got %d", got)
+	}
+}
+
+func TestWatchTargetsBackfillProfileOnSaveAndLoad(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+
+	repoPath := filepath.Join(home, "repo")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "turbo.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewStore()
+	if err := store.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+
+	target := WatchTarget{
+		Path:   repoPath,
+		Repo:   "owner/repo",
+		Branch: "main",
+	}
+	if err := store.SaveWatchTargets([]WatchTarget{target}); err != nil {
+		t.Fatal(err)
+	}
+
+	targets, err := store.LoadWatchTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("unexpected targets: %#v", targets)
+	}
+	if targets[0].Profile.Shape != repo.ShapeMonorepo {
+		t.Fatalf("expected monorepo profile, got %#v", targets[0].Profile)
+	}
+	if targets[0].Profile.MonorepoStack != repo.MonorepoStackTurborepo {
+		t.Fatalf("expected turborepo stack, got %#v", targets[0].Profile)
+	}
+	if targets[0].Profile.ServiceLaunch.LauncherSkill != "docker-compose-launch" {
+		t.Fatalf("expected service launch contract defaults, got %#v", targets[0].Profile.ServiceLaunch)
 	}
 }

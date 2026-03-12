@@ -314,10 +314,10 @@ func (a *App) Watch(ctx context.Context, rawPath string, daemon bool, labels []s
 	}
 
 	if updated {
-		a.state.AppendDaemonLog("watch updated path=%s repo=%s branch=%s assignee=%s max_parallel=%d daemon=%t", info.Path, info.Repo, info.Branch, assigneeOrDefault(findWatchTargetAssignee(targets, info.Path)), findWatchTargetMaxParallel(targets, info.Path), daemon)
+		a.state.AppendDaemonLog("watch updated path=%s repo=%s branch=%s shape=%s stack=%s assignee=%s max_parallel=%d daemon=%t", info.Path, info.Repo, info.Branch, info.Profile.Shape, info.Profile.MonorepoStack, assigneeOrDefault(findWatchTargetAssignee(targets, info.Path)), findWatchTargetMaxParallel(targets, info.Path), daemon)
 		fmt.Fprintln(a.stdout, "updated", info.Path)
 	} else {
-		a.state.AppendDaemonLog("watch added path=%s repo=%s branch=%s assignee=%s max_parallel=%d daemon=%t", info.Path, info.Repo, info.Branch, assigneeOrDefault(assignee), configuredMaxParallel(maxParallel), daemon)
+		a.state.AppendDaemonLog("watch added path=%s repo=%s branch=%s shape=%s stack=%s assignee=%s max_parallel=%d daemon=%t", info.Path, info.Repo, info.Branch, info.Profile.Shape, info.Profile.MonorepoStack, assigneeOrDefault(assignee), configuredMaxParallel(maxParallel), daemon)
 		fmt.Fprintln(a.stdout, "watching", info.Path)
 	}
 	return nil
@@ -481,6 +481,8 @@ func (a *App) ScanOnce(ctx context.Context) error {
 			}
 			for _, next := range nextIssues {
 				a.state.AppendDaemonLog("scan repo selected issue repo=%s issue=%d title=%q", target.Repo, next.Number, next.Title)
+				route := skillRouteForTarget(*target)
+				a.state.AppendDaemonLog("scan repo route repo=%s issue=%d shape=%s stack=%s skill=%s services_required=%t service_types=%v", target.Repo, next.Number, target.Profile.Shape, route.Stack, route.Skill, target.Profile.ServiceLaunch.Required, target.Profile.ServiceLaunch.Services)
 
 				selectedProvider, providerErr := resolveIssueProvider(*target, next)
 				if providerErr != nil {
