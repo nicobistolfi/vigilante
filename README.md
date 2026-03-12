@@ -208,6 +208,19 @@ go build -o /Users/$USER/.local/bin/vigilante ./cmd/vigilante
 /Users/$USER/.local/bin/vigilante setup -d
 ```
 
+## Monorepo Routing Contract
+
+When repository classification marks a watched repository as a monorepo, Vigilante records an explicit stack category and uses that result for issue-skill routing. Current stack categories are `turborepo`, `nx`, `rush`, `bazel`, `gradle`, and `unknown`.
+
+Monorepo issue prompts also carry a shared service-launch contract instead of stack-specific database boot logic in core dispatch. The contract is intentionally narrow:
+
+- `docker-compose-launch` is invoked only when local implementation or test dependencies are required.
+- launched services are scoped to the assigned issue worktree
+- supported local database types include MySQL, MariaDB, Postgres, and MongoDB
+- the launcher must return enough connection details for app and test commands to use those services
+
+Unknown monorepo stacks fall back to the generic `vigilante-issue-implementation` skill so dispatch remains safe while preserving the detected stack metadata in the prompt.
+
 Notes:
 
 - foreground runs are the quickest way to iterate on scheduler, worktree, and Codex execution behavior

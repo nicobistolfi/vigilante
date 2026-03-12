@@ -9,6 +9,7 @@ import (
 
 	skillassets "github.com/nicobistolfi/vigilante"
 	ghcli "github.com/nicobistolfi/vigilante/internal/github"
+	"github.com/nicobistolfi/vigilante/internal/repo"
 	"github.com/nicobistolfi/vigilante/internal/state"
 )
 
@@ -133,9 +134,87 @@ func TestBuildIssuePrompt(t *testing.T) {
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
 	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "Codex"}
 	prompt := BuildIssuePrompt(target, issue, session)
-	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "Coding Agent Launched: Codex", "10-cell progress bar", "ETA: ~N minutes"} {
+	for _, text := range []string{"Use the `vigilante-issue-implementation` skill", "Issue: #12 - Fix bug", "Worktree path: /tmp/worktree", "gh issue comment", "implementation plan", "open a pull request", "Coding Agent Launched: Codex", "10-cell progress bar", "ETA: ~N minutes", "docker-compose-launch contract", "Local services required: false"} {
 		if !strings.Contains(prompt, text) {
 			t.Fatalf("prompt missing %q: %s", text, prompt)
+		}
+	}
+}
+
+func TestBuildIssuePromptRoutesMonoreposAndIncludesServiceContract(t *testing.T) {
+	target := state.WatchTarget{
+		Path: "/tmp/repo",
+		Repo: "owner/repo",
+		Profile: repo.Profile{
+			Shape:         repo.ShapeMonorepo,
+			MonorepoStack: repo.MonorepoStackTurborepo,
+			WorkspaceHints: []string{
+				"Use Turbo workspace filters.",
+			},
+			ProcessHints: []string{
+				"Prefer turbo run for targeted commands.",
+			},
+			ServiceLaunch: repo.ServiceLaunchContract{
+				Required: true,
+				Services: []repo.ServiceType{repo.ServiceTypeMongoDB, repo.ServiceTypePostgres},
+			},
+		},
+	}
+	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
+	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "Codex"}
+	prompt := BuildIssuePrompt(target, issue, session)
+	for _, text := range []string{
+		"Use the `vigilante-turborepo-issue-implementation` skill",
+		"Repository shape: monorepo",
+		"Monorepo stack: turborepo",
+		"Workspace hints:",
+		"- Use Turbo workspace filters.",
+		"Process hints:",
+		"- Prefer turbo run for targeted commands.",
+		"Local services required: true",
+		"Requested service types: mongodb, postgres",
+		"Supported database service types include mysql, mariadb, postgres, and mongodb.",
+	} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("prompt missing %q: %s", text, prompt)
+		}
+	}
+}
+
+func TestResolveIssueImplementationRouteFallsBackForUnknownStacks(t *testing.T) {
+	target := state.WatchTarget{
+		Path: "/tmp/repo",
+		Repo: "owner/repo",
+		Profile: repo.Profile{
+			Shape:         repo.ShapeMonorepo,
+			MonorepoStack: repo.MonorepoStackUnknown,
+		},
+	}
+
+	route := ResolveIssueImplementationRoute(target)
+	if route.Skill != VigilanteIssueImplementation {
+		t.Fatalf("unexpected fallback skill: %#v", route)
+	}
+	if route.Stack != repo.MonorepoStackUnknown {
+		t.Fatalf("unexpected fallback stack: %#v", route)
+	}
+}
+
+func TestBuildServiceLaunchContractLinesAppliesDefaults(t *testing.T) {
+	lines := buildServiceLaunchContractLines(repo.ServiceLaunchContract{
+		Required: true,
+		Services: []repo.ServiceType{repo.ServiceTypePostgres, repo.ServiceTypeMySQL},
+	})
+	text := strings.Join(lines, "\n")
+	for _, want := range []string{
+		"Local services required: true",
+		"Service launcher skill: docker-compose-launch",
+		"Service launcher scope: assigned_worktree",
+		"Service launcher purpose: local implementation/test dependencies only",
+		"Requested service types: mysql, postgres",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("contract missing %q: %s", want, text)
 		}
 	}
 }

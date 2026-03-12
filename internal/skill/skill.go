@@ -6,22 +6,34 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	skillassets "github.com/nicobistolfi/vigilante"
 	ghcli "github.com/nicobistolfi/vigilante/internal/github"
+	"github.com/nicobistolfi/vigilante/internal/repo"
 	"github.com/nicobistolfi/vigilante/internal/state"
 )
 
 const VigilanteIssueImplementation = "vigilante-issue-implementation"
 const VigilanteConflictResolution = "vigilante-conflict-resolution"
 const VigilanteCreateIssue = "vigilante-create-issue"
+const VigilanteTurborepoIssueImplementation = "vigilante-turborepo-issue-implementation"
+const VigilanteNxIssueImplementation = "vigilante-nx-issue-implementation"
+const VigilanteRushIssueImplementation = "vigilante-rush-issue-implementation"
+const VigilanteBazelIssueImplementation = "vigilante-bazel-issue-implementation"
+const VigilanteGradleIssueImplementation = "vigilante-gradle-issue-implementation"
 
 func VigilanteSkillNames() []string {
 	return []string{
 		VigilanteIssueImplementation,
 		VigilanteConflictResolution,
 		VigilanteCreateIssue,
+		VigilanteTurborepoIssueImplementation,
+		VigilanteNxIssueImplementation,
+		VigilanteRushIssueImplementation,
+		VigilanteBazelIssueImplementation,
+		VigilanteGradleIssueImplementation,
 	}
 }
 
@@ -44,19 +56,25 @@ func EnsureInstalled(codexHome string) error {
 
 func BuildIssuePrompt(target state.WatchTarget, issue ghcli.Issue, session state.Session) string {
 	providerName := displayProviderName(session.Provider)
+	profile := normalizeProfile(target.Profile)
+	target.Profile = profile
+	route := ResolveIssueImplementationRoute(target)
 	lines := []string{
-		fmt.Sprintf("Use the `%s` skill for this task.", VigilanteIssueImplementation),
+		fmt.Sprintf("Use the `%s` skill for this task.", route.Skill),
 		fmt.Sprintf("Repository: %s", target.Repo),
 		fmt.Sprintf("Local repository path: %s", target.Path),
 		fmt.Sprintf("Issue: #%d - %s", issue.Number, issue.Title),
 		fmt.Sprintf("Issue URL: %s", issue.URL),
 		fmt.Sprintf("Worktree path: %s", session.WorktreePath),
 		fmt.Sprintf("Branch: %s", session.Branch),
+		fmt.Sprintf("Repository shape: %s", target.Profile.Shape),
+		fmt.Sprintf("Monorepo stack: %s", target.Profile.MonorepoStack),
 		"Use `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.",
 		fmt.Sprintf("For the coding-agent start comment, use `## 🕹️ Coding Agent Launched: %s` instead of a generic session-start title.", providerName),
 		"Use the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.",
 		"Use the issue as the source of truth for the requested behavior and keep the implementation minimal.",
 	}
+	lines = append(lines, buildImplementationContextLines(target, route)...)
 	return strings.Join(lines, "\n")
 }
 
@@ -111,6 +129,107 @@ func BuildConflictResolutionPrompt(target state.WatchTarget, session state.Sessi
 		"Keep the changes minimal and focused on getting the PR back to a merge-ready state.",
 	}
 	return strings.Join(lines, "\n")
+}
+
+type IssueImplementationRoute struct {
+	Skill string
+	Stack repo.MonorepoStack
+}
+
+func ResolveIssueImplementationRoute(target state.WatchTarget) IssueImplementationRoute {
+	profile := normalizeProfile(target.Profile)
+	route := IssueImplementationRoute{
+		Skill: VigilanteIssueImplementation,
+		Stack: profile.MonorepoStack,
+	}
+	switch profile.MonorepoStack {
+	case repo.MonorepoStackTurborepo:
+		route.Skill = VigilanteTurborepoIssueImplementation
+	case repo.MonorepoStackNx:
+		route.Skill = VigilanteNxIssueImplementation
+	case repo.MonorepoStackRush:
+		route.Skill = VigilanteRushIssueImplementation
+	case repo.MonorepoStackBazel:
+		route.Skill = VigilanteBazelIssueImplementation
+	case repo.MonorepoStackGradle:
+		route.Skill = VigilanteGradleIssueImplementation
+	}
+	return route
+}
+
+func normalizeProfile(profile repo.Profile) repo.Profile {
+	if profile.Shape == "" {
+		profile.Shape = repo.ShapeStandard
+	}
+	if profile.MonorepoStack == "" {
+		profile.MonorepoStack = repo.MonorepoStackNone
+	}
+	if profile.ServiceLaunch.Scope == "" {
+		profile.ServiceLaunch.Scope = "assigned_worktree"
+	}
+	if profile.ServiceLaunch.LauncherSkill == "" {
+		profile.ServiceLaunch.LauncherSkill = "docker-compose-launch"
+	}
+	if profile.ServiceLaunch.LauncherPurpose == "" {
+		profile.ServiceLaunch.LauncherPurpose = "local implementation/test dependencies only"
+	}
+	return profile
+}
+
+func buildImplementationContextLines(target state.WatchTarget, route IssueImplementationRoute) []string {
+	lines := []string{
+		fmt.Sprintf("Selected implementation skill: %s", route.Skill),
+	}
+	if len(target.Profile.WorkspaceHints) > 0 {
+		lines = append(lines, "Workspace hints:")
+		for _, hint := range target.Profile.WorkspaceHints {
+			lines = append(lines, fmt.Sprintf("- %s", hint))
+		}
+	}
+	if len(target.Profile.ProcessHints) > 0 {
+		lines = append(lines, "Process hints:")
+		for _, hint := range target.Profile.ProcessHints {
+			lines = append(lines, fmt.Sprintf("- %s", hint))
+		}
+	}
+	lines = append(lines, buildServiceLaunchContractLines(target.Profile.ServiceLaunch)...)
+	return lines
+}
+
+func buildServiceLaunchContractLines(contract repo.ServiceLaunchContract) []string {
+	if contract.Scope == "" {
+		contract.Scope = "assigned_worktree"
+	}
+	if contract.LauncherSkill == "" {
+		contract.LauncherSkill = "docker-compose-launch"
+	}
+	if contract.LauncherPurpose == "" {
+		contract.LauncherPurpose = "local implementation/test dependencies only"
+	}
+
+	lines := []string{
+		fmt.Sprintf("Local services required: %t", contract.Required),
+		fmt.Sprintf("Service launcher skill: %s", contract.LauncherSkill),
+		fmt.Sprintf("Service launcher scope: %s", contract.Scope),
+		fmt.Sprintf("Service launcher purpose: %s", contract.LauncherPurpose),
+		"docker-compose-launch contract:",
+		"- Invoke it only when the target codebase needs local services to boot or test.",
+		"- Launch services inside the assigned worktree only.",
+		"- Supported database service types include mysql, mariadb, postgres, and mongodb.",
+		"- Return enough connection information for app and test commands to use those services.",
+	}
+	if len(contract.Services) == 0 {
+		lines = append(lines, "Requested service types: none")
+		return lines
+	}
+
+	serviceNames := make([]string, 0, len(contract.Services))
+	for _, serviceType := range contract.Services {
+		serviceNames = append(serviceNames, string(serviceType))
+	}
+	sort.Strings(serviceNames)
+	lines = append(lines, fmt.Sprintf("Requested service types: %s", strings.Join(serviceNames, ", ")))
+	return lines
 }
 
 func repoSkillPath(name string) string {

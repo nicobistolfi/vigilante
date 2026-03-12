@@ -23,6 +23,7 @@ import (
 	"github.com/nicobistolfi/vigilante/internal/repo"
 	issuerunner "github.com/nicobistolfi/vigilante/internal/runner"
 	"github.com/nicobistolfi/vigilante/internal/service"
+	"github.com/nicobistolfi/vigilante/internal/skill"
 	"github.com/nicobistolfi/vigilante/internal/state"
 	"github.com/nicobistolfi/vigilante/internal/worktree"
 )
@@ -1478,6 +1479,10 @@ func (a *App) recordSessionFailure(session *state.Session, stage string, operati
 
 func classifyBlockedReason(stage string, operation string, err error) state.BlockedReason {
 	return blocking.Classify(stage, operation, err.Error(), summarizeMaintenanceError(err))
+}
+
+func skillRouteForTarget(target state.WatchTarget) skill.IssueImplementationRoute {
+	return skill.ResolveIssueImplementationRoute(target)
 }
 
 func markSessionBlocked(session *state.Session, stage string, blocked state.BlockedReason, now time.Time) {
