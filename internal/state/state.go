@@ -26,7 +26,7 @@ type WatchTarget struct {
 	AddedAt       string   `json:"added_at,omitempty"`
 }
 
-const DefaultMaxParallelSessions = 1
+const DefaultMaxParallelSessions = 3
 
 type SessionStatus string
 

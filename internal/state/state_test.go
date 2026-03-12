@@ -58,3 +58,15 @@ func TestAppendLogFileUsesLocalTimezone(t *testing.T) {
 		t.Fatalf("expected local timezone log entry, got %q", text)
 	}
 }
+
+func TestWatchTargetMaxParallelDefaultsToSharedValue(t *testing.T) {
+	if got := normalizeMaxParallelSessions(0); got != DefaultMaxParallelSessions {
+		t.Fatalf("expected zero max_parallel_sessions to normalize to default %d, got %d", DefaultMaxParallelSessions, got)
+	}
+	if got := normalizeMaxParallelSessions(-1); got != DefaultMaxParallelSessions {
+		t.Fatalf("expected negative max_parallel_sessions to normalize to default %d, got %d", DefaultMaxParallelSessions, got)
+	}
+	if got := normalizeMaxParallelSessions(1); got != 1 {
+		t.Fatalf("expected explicit max_parallel_sessions to be preserved, got %d", got)
+	}
+}
