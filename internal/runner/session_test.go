@@ -21,18 +21,18 @@ func TestRunIssueSessionSuccess(t *testing.T) {
 	runner := testutil.FakeRunner{
 		Outputs: map[string]string{
 			"gh issue comment --repo owner/repo 7 --body " + ghcli.FormatProgressComment(ghcli.ProgressComment{
-				Stage:      "Session Start",
-				Emoji:      "🚦",
+				Stage:      "Vigilante Session Start",
+				Emoji:      "🧢",
 				Percent:    20,
 				ETAMinutes: 25,
 				Items: []string{
 					"Vigilante launched this implementation session in `/tmp/worktree`.",
 					"Branch: `vigilante/issue-7`.",
-					"Current stage: handing the issue off to the configured coding agent (`codex`) for investigation and implementation.",
+					"Current stage: handing the issue off to the configured coding agent (`Codex`) for investigation and implementation.",
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
-			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
 		},
 	}
 	env := &environment.Environment{OS: "darwin", Runner: runner}
@@ -60,14 +60,14 @@ func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
 	runner := testutil.FakeRunner{
 		Outputs: map[string]string{
 			"gh issue comment --repo owner/repo 7 --body " + ghcli.FormatProgressComment(ghcli.ProgressComment{
-				Stage:      "Session Start",
-				Emoji:      "🚦",
+				Stage:      "Vigilante Session Start",
+				Emoji:      "🧢",
 				Percent:    20,
 				ETAMinutes: 25,
 				Items: []string{
 					"Vigilante launched this implementation session in `/tmp/worktree`.",
 					"Branch: `vigilante/issue-7`.",
-					"Current stage: handing the issue off to the configured coding agent (`codex`) for investigation and implementation.",
+					"Current stage: handing the issue off to the configured coding agent (`Codex`) for investigation and implementation.",
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
@@ -85,7 +85,7 @@ func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
 			}): "ok",
 		},
 		Errors: map[string]error{
-			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": errors.New("codex exec [--cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox prompt]: exit status 1"),
+			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": errors.New("codex exec [--cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox prompt]: exit status 1"),
 		},
 	}
 	env := &environment.Environment{OS: "darwin", Runner: runner}
