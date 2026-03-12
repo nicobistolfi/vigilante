@@ -619,6 +619,261 @@ func TestScanOnceProcessesGitHubCommentResumeRequest(t *testing.T) {
 	}
 }
 
+func TestScanOncePostsDiagnosticCommentWhenGitHubCommentResumeFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+
+	repoPath := filepath.Join(home, "repo")
+	worktreePath := filepath.Join(repoPath, ".worktrees", "vigilante", "issue-1")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	resumeSummary := resumeFailureDiagnostic{
+		Step:           "Resume could not rerun `codex exec` for `vigilante/issue-1`.",
+		Why:            "Codex reported an expired session, so Vigilante could not continue the blocked work.",
+		Classification: "provider_related",
+		NextStep:       "Re-authenticate Codex locally, then retry `@vigilanteai resume`.",
+	}
+	expectedComment := ghcli.FormatProgressComment(ghcli.ProgressComment{
+		Stage:      "Resume Blocked",
+		Emoji:      "🧱",
+		Percent:    90,
+		ETAMinutes: 10,
+		Items: []string{
+			resumeSummary.Step,
+			resumeSummary.Why,
+			"Failure type: `provider_related` (`provider_auth`). " + resumeSummary.NextStep,
+		},
+		Tagline: "No mystery errors left behind.",
+	})
+
+	app := New()
+	app.stdout = &bytes.Buffer{}
+	app.stderr = testutil.IODiscard{}
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
+		Outputs: map[string]string{
+			"gh api repos/owner/repo/issues/1":          `{"labels":[]}`,
+			"gh api repos/owner/repo/issues/1/comments": `[{"id":101,"body":"@vigilanteai resume","created_at":"2026-03-10T12:30:00Z","user":{"login":"nicobistolfi"}}]`,
+			"gh api --method POST -H Accept: application/vnd.github+json repos/owner/repo/issues/comments/101/reactions -f content=eyes": "{}",
+			"codex --version": "codex 1.0.0",
+			resumeDiagnosticSummaryCommand(worktreePath, state.Session{
+				Repo:             "owner/repo",
+				IssueNumber:      1,
+				IssueTitle:       "first",
+				Branch:           "vigilante/issue-1",
+				WorktreePath:     worktreePath,
+				BlockedStage:     "issue_execution",
+				BlockedReason:    state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired again", Detail: "session expired again"},
+				ResumeHint:       "vigilante resume --repo owner/repo --issue 1",
+				LastResumeSource: "comment",
+				LastError:        "session expired again",
+			}, "issue_execution"): `{"step":"Resume could not rerun ` + "`codex exec`" + ` for ` + "`vigilante/issue-1`" + `.","why":"Codex reported an expired session, so Vigilante could not continue the blocked work.","classification":"provider_related","next_step":"Re-authenticate Codex locally, then retry ` + "`@vigilanteai resume`" + `."}`,
+			"gh issue comment --repo owner/repo 1 --body " + expectedComment: "ok",
+			"gh api user --jq .login": "nicobistolfi\n",
+			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": "[]",
+		},
+		Errors: map[string]error{
+			issuePromptCommand(worktreePath, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1"): errors.New("session expired again"),
+		},
+	}
+	if err := app.state.EnsureLayout(); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveWatchTargets([]state.WatchTarget{{Path: repoPath, Repo: "owner/repo", Branch: "main", Assignee: "me"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.state.SaveSessions([]state.Session{{
+		RepoPath:        repoPath,
+		Repo:            "owner/repo",
+		IssueNumber:     1,
+		IssueTitle:      "first",
+		IssueURL:        "https://github.com/owner/repo/issues/1",
+		Branch:          "vigilante/issue-1",
+		WorktreePath:    worktreePath,
+		Status:          state.SessionStatusBlocked,
+		BlockedAt:       "2026-03-11T13:19:12Z",
+		BlockedStage:    "issue_execution",
+		BlockedReason:   state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired", Detail: "session expired"},
+		RetryPolicy:     "paused",
+		ResumeRequired:  true,
+		ResumeHint:      "vigilante resume --repo owner/repo --issue 1",
+		UpdatedAt:       "2026-03-11T13:19:12Z",
+		LastHeartbeatAt: "2026-03-11T13:19:12Z",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ScanOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := app.state.LoadSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("unexpected sessions: %#v", sessions)
+	}
+	if sessions[0].Status != state.SessionStatusBlocked {
+		t.Fatalf("expected blocked session after failed resume: %#v", sessions[0])
+	}
+	if sessions[0].LastResumeFailureFingerprint == "" || sessions[0].LastResumeFailureCommentedAt == "" {
+		t.Fatalf("expected resume failure comment tracking: %#v", sessions[0])
+	}
+}
+
+func TestResumeBlockedSessionFallsBackWhenDiagnosticSummaryFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+
+	repoPath := filepath.Join(home, "repo")
+	worktreePath := filepath.Join(repoPath, ".worktrees", "vigilante", "issue-1")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := New()
+	app.stdout = &bytes.Buffer{}
+	app.stderr = testutil.IODiscard{}
+	session := state.Session{
+		RepoPath:       repoPath,
+		Repo:           "owner/repo",
+		Provider:       "codex",
+		IssueNumber:    1,
+		IssueTitle:     "first",
+		IssueURL:       "https://github.com/owner/repo/issues/1",
+		Branch:         "vigilante/issue-1",
+		WorktreePath:   worktreePath,
+		Status:         state.SessionStatusBlocked,
+		BlockedStage:   "issue_execution",
+		BlockedReason:  state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired", Detail: "session expired"},
+		ResumeRequired: true,
+		ResumeHint:     "vigilante resume --repo owner/repo --issue 1",
+	}
+	fallbackSession := session
+	fallbackSession.LastResumeSource = "comment"
+	fallbackSession.LastError = "session expired again"
+	fallbackSession.BlockedReason = state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired again", Detail: "session expired again"}
+	fallbackDiagnostic := deterministicResumeFailureDiagnostic(fallbackSession, "issue_execution")
+	expectedComment := ghcli.FormatProgressComment(ghcli.ProgressComment{
+		Stage:      "Resume Blocked",
+		Emoji:      "🧱",
+		Percent:    90,
+		ETAMinutes: 10,
+		Items: []string{
+			fallbackDiagnostic.Step,
+			fallbackDiagnostic.Why,
+			"Failure type: `provider_related` (`provider_auth`). " + fallbackDiagnostic.NextStep,
+		},
+		Tagline: "No mystery errors left behind.",
+	})
+
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"codex": "/usr/bin/codex"},
+		Outputs: map[string]string{
+			"codex --version": "codex 1.0.0",
+			"gh issue comment --repo owner/repo 1 --body " + expectedComment: "ok",
+		},
+		Errors: map[string]error{
+			issuePromptCommand(worktreePath, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1"): errors.New("session expired again"),
+			resumeDiagnosticSummaryCommand(worktreePath, fallbackSession, "issue_execution"):                                                    errors.New("summary failed"),
+		},
+	}
+
+	if err := app.resumeBlockedSession(context.Background(), &session, "comment"); err != nil {
+		t.Fatal(err)
+	}
+	if session.Status != state.SessionStatusBlocked {
+		t.Fatalf("expected session to remain blocked: %#v", session)
+	}
+	if session.LastResumeFailureFingerprint == "" || session.LastResumeFailureCommentedAt == "" {
+		t.Fatalf("expected fallback comment metadata to be tracked: %#v", session)
+	}
+}
+
+func TestResumeBlockedSessionSuppressesDuplicateDiagnosticComment(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+
+	repoPath := filepath.Join(home, "repo")
+	worktreePath := filepath.Join(repoPath, ".worktrees", "vigilante", "issue-1")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	app := New()
+	app.stdout = &bytes.Buffer{}
+	app.stderr = testutil.IODiscard{}
+	app.clock = func() time.Time { return now }
+	session := state.Session{
+		RepoPath:       repoPath,
+		Repo:           "owner/repo",
+		Provider:       "codex",
+		IssueNumber:    1,
+		IssueTitle:     "first",
+		IssueURL:       "https://github.com/owner/repo/issues/1",
+		Branch:         "vigilante/issue-1",
+		WorktreePath:   worktreePath,
+		Status:         state.SessionStatusBlocked,
+		BlockedStage:   "issue_execution",
+		BlockedReason:  state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired", Detail: "session expired"},
+		ResumeRequired: true,
+		ResumeHint:     "vigilante resume --repo owner/repo --issue 1",
+	}
+	firstFailureSession := session
+	firstFailureSession.LastResumeSource = "comment"
+	firstFailureSession.LastError = "session expired again"
+	firstFailureSession.BlockedReason = state.BlockedReason{Kind: "provider_auth", Operation: "codex exec", Summary: "session expired again", Detail: "session expired again"}
+	diagnostic := resumeFailureDiagnostic{
+		Step:           "Resume could not rerun `codex exec` for `vigilante/issue-1`.",
+		Why:            "Codex reported an expired session, so Vigilante could not continue the blocked work.",
+		Classification: "provider_related",
+		NextStep:       "Re-authenticate Codex locally, then retry `@vigilanteai resume`.",
+	}
+	expectedComment := ghcli.FormatProgressComment(ghcli.ProgressComment{
+		Stage:      "Resume Blocked",
+		Emoji:      "🧱",
+		Percent:    90,
+		ETAMinutes: 10,
+		Items: []string{
+			diagnostic.Step,
+			diagnostic.Why,
+			"Failure type: `provider_related` (`provider_auth`). " + diagnostic.NextStep,
+		},
+		Tagline: "No mystery errors left behind.",
+	})
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"codex": "/usr/bin/codex"},
+		Outputs: map[string]string{
+			"codex --version": "codex 1.0.0",
+			resumeDiagnosticSummaryCommand(worktreePath, firstFailureSession, "issue_execution"): `{"step":"Resume could not rerun ` + "`codex exec`" + ` for ` + "`vigilante/issue-1`" + `.","why":"Codex reported an expired session, so Vigilante could not continue the blocked work.","classification":"provider_related","next_step":"Re-authenticate Codex locally, then retry ` + "`@vigilanteai resume`" + `."}`,
+			"gh issue comment --repo owner/repo 1 --body " + expectedComment:                     "ok",
+		},
+		Errors: map[string]error{
+			issuePromptCommand(worktreePath, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1"): errors.New("session expired again"),
+		},
+	}
+
+	if err := app.resumeBlockedSession(context.Background(), &session, "comment"); err != nil {
+		t.Fatal(err)
+	}
+	firstCommentedAt := session.LastResumeFailureCommentedAt
+	now = now.Add(5 * time.Minute)
+	if err := app.resumeBlockedSession(context.Background(), &session, "comment"); err != nil {
+		t.Fatal(err)
+	}
+	if session.LastResumeFailureCommentedAt != firstCommentedAt {
+		t.Fatalf("expected duplicate resume failure comment to be suppressed: %#v", session)
+	}
+}
+
 func TestScanOnceProcessesGitHubCommentCleanupRequest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
@@ -1819,4 +2074,8 @@ func preflightPromptCommand(worktreePath string, repo string, repoPath string, i
 		ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
 		state.Session{WorktreePath: worktreePath, Branch: branch},
 	))
+}
+
+func resumeDiagnosticSummaryCommand(worktreePath string, session state.Session, previousStage string) string {
+	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", buildResumeFailureSummaryPrompt(session, previousStage))
 }

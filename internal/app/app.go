@@ -1197,6 +1197,7 @@ func (a *App) resumeBlockedSession(ctx context.Context, session *state.Session, 
 	if session.Status != state.SessionStatusBlocked {
 		return nil
 	}
+	previousStage := session.BlockedStage
 	session.Status = state.SessionStatusResuming
 	session.LastResumeSource = source
 	session.UpdatedAt = a.clock().Format(time.RFC3339)
@@ -1205,19 +1206,7 @@ func (a *App) resumeBlockedSession(ctx context.Context, session *state.Session, 
 		blocked := classifyBlockedReason(session.BlockedStage, session.BlockedReason.Operation, err)
 		markSessionBlocked(session, fallbackText(session.BlockedStage, "pr_maintenance"), blocked, a.clock())
 		session.LastError = err.Error()
-		body := ghcli.FormatProgressComment(ghcli.ProgressComment{
-			Stage:      "Blocked",
-			Emoji:      "🧱",
-			Percent:    88,
-			ETAMinutes: 10,
-			Items: []string{
-				resumePreflightBlockedMessage(blocked, session.Branch),
-				blocking.CauseLine(blocked),
-				fmt.Sprintf("Next step: fix the blocker, then run `%s` or request resume from GitHub again.", session.ResumeHint),
-			},
-			Tagline: "Clear eyes, full hearts, can’t lose.",
-		})
-		return ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body)
+		return a.commentResumeFailure(ctx, session, previousStage)
 	}
 
 	var err error
@@ -1233,23 +1222,10 @@ func (a *App) resumeBlockedSession(ctx context.Context, session *state.Session, 
 		blocked := classifyBlockedReason(session.BlockedStage, session.BlockedReason.Operation, err)
 		markSessionBlocked(session, fallbackText(session.BlockedStage, "pr_maintenance"), blocked, a.clock())
 		session.LastError = err.Error()
-		body := ghcli.FormatProgressComment(ghcli.ProgressComment{
-			Stage:      "Blocked",
-			Emoji:      "🧱",
-			Percent:    90,
-			ETAMinutes: 12,
-			Items: []string{
-				resumeBlockedMessage(blocked, session.Branch),
-				blocking.CauseLine(blocked),
-				fmt.Sprintf("Next step: fix the blocker, then run `%s` or request resume from GitHub again.", session.ResumeHint),
-			},
-			Tagline: "The comeback is always stronger than the setback.",
-		})
-		return ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body)
+		return a.commentResumeFailure(ctx, session, previousStage)
 	}
 
 	previousKind := session.BlockedReason.Kind
-	previousStage := session.BlockedStage
 	clearBlockedState(session, a.clock(), source)
 	body := ghcli.FormatProgressComment(ghcli.ProgressComment{
 		Stage:      "Recovered",
@@ -1528,6 +1504,8 @@ func clearBlockedState(session *state.Session, now time.Time, source string) {
 	session.LastError = ""
 	session.LastMaintenanceError = ""
 	session.LastResumeSource = source
+	session.LastResumeFailureFingerprint = ""
+	session.LastResumeFailureCommentedAt = ""
 }
 
 func blockedStateLabel(session state.Session) string {
@@ -1589,6 +1567,153 @@ func fallbackText(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+type resumeFailureDiagnostic struct {
+	Step           string `json:"step"`
+	Why            string `json:"why"`
+	Classification string `json:"classification"`
+	NextStep       string `json:"next_step"`
+}
+
+func (a *App) commentResumeFailure(ctx context.Context, session *state.Session, previousStage string) error {
+	fingerprint := resumeFailureFingerprint(*session)
+	if fingerprint == session.LastResumeFailureFingerprint {
+		a.state.AppendDaemonLog("resume failure comment suppressed repo=%s issue=%d fingerprint=%s", session.Repo, session.IssueNumber, fingerprint)
+		return nil
+	}
+
+	diagnostic, err := a.generateResumeFailureDiagnostic(ctx, *session, previousStage)
+	if err != nil {
+		a.state.AppendDaemonLog("resume failure diagnostic summary failed repo=%s issue=%d err=%v", session.Repo, session.IssueNumber, err)
+		diagnostic = deterministicResumeFailureDiagnostic(*session, previousStage)
+	}
+
+	body := ghcli.FormatProgressComment(ghcli.ProgressComment{
+		Stage:      "Resume Blocked",
+		Emoji:      "🧱",
+		Percent:    90,
+		ETAMinutes: 10,
+		Items: []string{
+			diagnostic.Step,
+			diagnostic.Why,
+			fmt.Sprintf("Failure type: `%s` (`%s`). %s", diagnostic.Classification, fallbackText(session.BlockedReason.Kind, "unknown_operator_action_required"), diagnostic.NextStep),
+		},
+		Tagline: "No mystery errors left behind.",
+	})
+	if err := ghcli.CommentOnIssue(ctx, a.env.Runner, session.Repo, session.IssueNumber, body); err != nil {
+		return err
+	}
+	session.LastResumeFailureFingerprint = fingerprint
+	session.LastResumeFailureCommentedAt = a.clock().Format(time.RFC3339)
+	return nil
+}
+
+func (a *App) generateResumeFailureDiagnostic(ctx context.Context, session state.Session, previousStage string) (resumeFailureDiagnostic, error) {
+	workdir := strings.TrimSpace(session.WorktreePath)
+	if workdir == "" {
+		workdir = session.RepoPath
+	}
+	output, err := a.env.Runner.Run(
+		ctx,
+		workdir,
+		"codex",
+		"exec",
+		"--cd", workdir,
+		"--dangerously-bypass-approvals-and-sandbox",
+		buildResumeFailureSummaryPrompt(session, previousStage),
+	)
+	if err != nil {
+		return resumeFailureDiagnostic{}, err
+	}
+
+	var diagnostic resumeFailureDiagnostic
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &diagnostic); err != nil {
+		return resumeFailureDiagnostic{}, fmt.Errorf("parse resume diagnostic summary: %w", err)
+	}
+	if strings.TrimSpace(diagnostic.Step) == "" || strings.TrimSpace(diagnostic.Why) == "" || strings.TrimSpace(diagnostic.Classification) == "" || strings.TrimSpace(diagnostic.NextStep) == "" {
+		return resumeFailureDiagnostic{}, errors.New("resume diagnostic summary missing required fields")
+	}
+	return diagnostic, nil
+}
+
+func buildResumeFailureSummaryPrompt(session state.Session, previousStage string) string {
+	lines := []string{
+		"You summarize failed Vigilante resume attempts for GitHub issue comments.",
+		"Return only JSON with string fields: step, why, classification, next_step.",
+		"Classification must be one of: transient, operator_fixable, provider_related.",
+		"Keep every value concise, operator-facing, and under 140 characters. Do not use markdown.",
+		fmt.Sprintf("Issue: #%d - %s", session.IssueNumber, fallbackText(session.IssueTitle, "unknown issue")),
+		fmt.Sprintf("Branch: %s", fallbackText(session.Branch, "unknown branch")),
+		fmt.Sprintf("Resume source: %s", fallbackText(session.LastResumeSource, "unknown")),
+		fmt.Sprintf("Blocked stage before resume: %s", fallbackText(previousStage, "unknown")),
+		fmt.Sprintf("Failed stage after resume: %s", fallbackText(session.BlockedStage, "unknown")),
+		fmt.Sprintf("Failed operation: %s", fallbackText(session.BlockedReason.Operation, "resume")),
+		fmt.Sprintf("Failure kind: %s", fallbackText(session.BlockedReason.Kind, "unknown_operator_action_required")),
+		fmt.Sprintf("Summary: %s", fallbackText(session.BlockedReason.Summary, summarizeText(session.LastError))),
+		fmt.Sprintf("Detail: %s", fallbackText(session.BlockedReason.Detail, summarizeText(session.LastError))),
+		fmt.Sprintf("Resume hint: %s", fallbackText(session.ResumeHint, fmt.Sprintf("vigilante resume --repo %s --issue %d", session.Repo, session.IssueNumber))),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func deterministicResumeFailureDiagnostic(session state.Session, previousStage string) resumeFailureDiagnostic {
+	stage := fallbackText(previousStage, fallbackText(session.BlockedStage, "issue_execution"))
+	operation := fallbackText(session.BlockedReason.Operation, "resume")
+	why := fallbackText(session.BlockedReason.Detail, fallbackText(session.BlockedReason.Summary, summarizeText(session.LastError)))
+	if why == "" {
+		why = "Vigilante could not verify a recoverable state for the blocked session."
+	}
+	return resumeFailureDiagnostic{
+		Step:           fmt.Sprintf("Resume stopped while running `%s` to continue `%s` for `%s`.", operation, stage, fallbackText(session.Branch, "the blocked branch")),
+		Why:            fmt.Sprintf("Why it failed: %s", why),
+		Classification: resumeFailureClassification(session.BlockedReason.Kind),
+		NextStep:       resumeFailureNextStep(session),
+	}
+}
+
+func resumeFailureClassification(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "provider_auth", "provider_missing", "provider_runtime_error":
+		return "provider_related"
+	case "network_unreachable":
+		return "transient"
+	default:
+		return "operator_fixable"
+	}
+}
+
+func resumeFailureNextStep(session state.Session) string {
+	hint := fallbackText(session.ResumeHint, fmt.Sprintf("vigilante resume --repo %s --issue %d", session.Repo, session.IssueNumber))
+	switch strings.TrimSpace(session.BlockedReason.Kind) {
+	case "provider_auth":
+		return fmt.Sprintf("Re-authenticate the coding agent locally, then retry with `%s` or `@vigilanteai resume`.", hint)
+	case "provider_missing":
+		return fmt.Sprintf("Install or restore the coding agent runtime, then retry with `%s` or `@vigilanteai resume`.", hint)
+	case "git_auth":
+		return fmt.Sprintf("Restore git remote access, then retry with `%s` or `@vigilanteai resume`.", hint)
+	case "gh_auth":
+		return fmt.Sprintf("Refresh GitHub CLI authentication, then retry with `%s` or `@vigilanteai resume`.", hint)
+	case "network_unreachable":
+		return fmt.Sprintf("Retry once network access is stable, then run `%s` or comment `@vigilanteai resume` again.", hint)
+	case "dirty_worktree":
+		return fmt.Sprintf("Clean the worktree state, then retry with `%s` or `@vigilanteai resume`.", hint)
+	case "validation_failed":
+		return fmt.Sprintf("Fix the failing validation, then retry with `%s` or `@vigilanteai resume`.", hint)
+	default:
+		return fmt.Sprintf("Fix the blocker, then retry with `%s` or `@vigilanteai resume`.", hint)
+	}
+}
+
+func resumeFailureFingerprint(session state.Session) string {
+	return strings.Join([]string{
+		fallbackText(session.BlockedStage, "unknown"),
+		fallbackText(session.BlockedReason.Kind, "unknown_operator_action_required"),
+		fallbackText(session.BlockedReason.Operation, "resume"),
+		fallbackText(session.BlockedReason.Summary, ""),
+		fallbackText(session.BlockedReason.Detail, ""),
+		fallbackText(session.LastError, ""),
+	}, "|")
 }
 
 func sessionKey(repo string, issue int) string {
