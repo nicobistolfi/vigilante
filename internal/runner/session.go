@@ -55,6 +55,42 @@ func RunIssueSession(ctx context.Context, env *environment.Environment, store *s
 		return session
 	}
 
+	preflightInvocation, err := selectedProvider.BuildIssuePreflightInvocation(provider.IssueTask{Target: target, Issue: issue, Session: session})
+	if err != nil {
+		session.Status = state.SessionStatusFailed
+		session.LastError = err.Error()
+		session.EndedAt = time.Now().UTC().Format(time.RFC3339)
+		session.LastHeartbeatAt = session.EndedAt
+		session.UpdatedAt = session.EndedAt
+		appendSessionLog(logPath, "issue preflight invocation build failed", session, err.Error())
+		return session
+	}
+	preflightOutput, err := env.Runner.Run(ctx, preflightInvocation.Dir, preflightInvocation.Name, preflightInvocation.Args...)
+	if err != nil {
+		blocked := classifyBlockedFailure("baseline_preflight", preflightInvocation.Name, preflightOutput, err)
+		markSessionBlocked(&session, "baseline_preflight", blocked, time.Now().UTC())
+		session.LastError = err.Error()
+		session.EndedAt = time.Now().UTC().Format(time.RFC3339)
+		session.LastHeartbeatAt = session.EndedAt
+		session.UpdatedAt = session.EndedAt
+		appendSessionLog(logPath, "issue preflight failed", session, combineLogDetails(preflightOutput, err.Error()))
+		body := ghcli.FormatProgressComment(ghcli.ProgressComment{
+			Stage:      "Blocked",
+			Emoji:      "🧱",
+			Percent:    25,
+			ETAMinutes: 15,
+			Items: []string{
+				"Repository baseline validation failed before issue implementation began.",
+				fmt.Sprintf("Cause class: `%s`.", blocked.Kind),
+				fmt.Sprintf("Next step: restore the repository baseline, then run `%s` or request resume from GitHub.", session.ResumeHint),
+			},
+			Tagline: "Strong foundations make calm debugging sessions.",
+		})
+		_ = ghcli.CommentOnIssue(ctx, env.Runner, target.Repo, issue.Number, body)
+		return session
+	}
+	appendSessionLog(logPath, "issue preflight succeeded", session, preflightOutput)
+
 	invocation, err := selectedProvider.BuildIssueInvocation(provider.IssueTask{Target: target, Issue: issue, Session: session})
 	if err != nil {
 		session.Status = state.SessionStatusFailed
@@ -70,7 +106,7 @@ func RunIssueSession(ctx context.Context, env *environment.Environment, store *s
 	session.LastHeartbeatAt = session.EndedAt
 	session.UpdatedAt = session.EndedAt
 	if err != nil {
-		blocked := classifyBlockedFailure("issue_execution", "codex exec", output, err)
+		blocked := classifyBlockedFailure("issue_execution", invocation.Name, output, err)
 		markSessionBlocked(&session, "issue_execution", blocked, time.Now().UTC())
 		session.LastError = err.Error()
 		appendSessionLog(logPath, "session failed", session, combineLogDetails(output, err.Error()))
@@ -113,7 +149,7 @@ func RunConflictResolutionSession(ctx context.Context, env *environment.Environm
 	output, err := env.Runner.Run(ctx, invocation.Dir, invocation.Name, invocation.Args...)
 	if err != nil {
 		appendSessionLog(logPath, "conflict resolution failed", session, combineLogDetails(output, err.Error()))
-		blocked := classifyBlockedFailure("conflict_resolution", "codex exec", output, err)
+		blocked := classifyBlockedFailure("conflict_resolution", invocation.Name, output, err)
 		body := ghcli.FormatProgressComment(ghcli.ProgressComment{
 			Stage:      "Blocked",
 			Emoji:      "🧯",
@@ -177,11 +213,11 @@ func classifyBlockedFailure(stage string, operation string, output string, err e
 		reason.Kind = "provider_missing"
 	case strings.Contains(text, "worktree is not clean"):
 		reason.Kind = "dirty_worktree"
-	case strings.Contains(text, "go test") || strings.Contains(text, "validation"):
+	case strings.Contains(text, "go test") || strings.Contains(text, "validation") || strings.Contains(text, "build failed") || strings.Contains(text, "tests failed"):
 		reason.Kind = "validation_failed"
 	case strings.Contains(text, "network is unreachable") || strings.Contains(text, "timed out"):
 		reason.Kind = "network_unreachable"
-	case strings.Contains(strings.ToLower(stage), "issue") || strings.Contains(strings.ToLower(stage), "conflict"):
+	case strings.Contains(strings.ToLower(stage), "issue") || strings.Contains(strings.ToLower(stage), "conflict") || strings.Contains(strings.ToLower(stage), "preflight"):
 		reason.Kind = "provider_runtime_error"
 	}
 	if reason.Detail == "" {

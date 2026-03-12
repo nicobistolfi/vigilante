@@ -273,7 +273,7 @@ func TestScanOnceProcessesGitHubCommentResumeRequest(t *testing.T) {
 			"gh api repos/owner/repo/issues/1/comments": `[{"id":101,"body":"@vigilanteai resume","created_at":"2026-03-10T12:30:00Z","user":{"login":"nicobistolfi"}}]`,
 			"gh api --method POST -H Accept: application/vnd.github+json repos/owner/repo/issues/comments/101/reactions -f content=eyes": "{}",
 			"codex --version": "codex 1.0.0",
-			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + repoPath + "\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: vigilante/issue-1\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			issuePromptCommand(worktreePath, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1"): "done",
 			"gh issue comment --repo owner/repo 1 --body " + ghcli.FormatProgressComment(ghcli.ProgressComment{
 				Stage:      "Recovered",
 				Emoji:      "🫡",
@@ -370,8 +370,8 @@ func TestScanOnceSelectsEligibleIssueAndPersistsSession(t *testing.T) {
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
-			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: " + branch + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.":                                                                                                                                                                                                                                                                                                                                                                                                                                                         "done",
-			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: " + branch + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			preflightPromptCommand(worktreePath, "owner/repo", "/tmp/repo", 1, "first", "https://github.com/owner/repo/issues/1", branch): "baseline ok",
+			issuePromptCommand(worktreePath, "owner/repo", "/tmp/repo", 1, "first", "https://github.com/owner/repo/issues/1", branch):     "done",
 		},
 		Errors: map[string]error{
 			"git show-ref --verify --quiet refs/heads/" + branch:         errors.New("exit status 1"),
@@ -496,8 +496,8 @@ func TestScanOnceSkipsRedispatchForMaintainedIssueAndStartsNextEligibleIssue(t *
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
-			"codex exec --cd " + worktreePath2 + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + repoPath + "\nIssue: #2 - second\nIssue URL: https://github.com/owner/repo/issues/2\nWorktree path: " + worktreePath2 + "\nBranch: " + branch2 + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.":                                                                                                                                                                                                                                                                                                                                                                                                                                                         "done",
-			"codex exec --cd " + worktreePath2 + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + repoPath + "\nIssue: #2 - second\nIssue URL: https://github.com/owner/repo/issues/2\nWorktree path: " + worktreePath2 + "\nBranch: " + branch2 + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			preflightPromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", branch2): "baseline ok",
+			issuePromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", branch2):     "done",
 		},
 		Errors: map[string]error{
 			"git show-ref --verify --quiet refs/heads/" + branch2:        errors.New("exit status 1"),
@@ -565,9 +565,10 @@ func TestScanOnceWithMaxParallelOnePreservesSerialBehavior(t *testing.T) {
 			"gh api user --jq .login": "nicobistolfi\n",
 			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[]},{"number":2,"title":"second","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo/issues/2","labels":[]}]`,
 			"git worktree prune": "ok",
-			"git worktree add -b vigilante/issue-1-first " + worktreePath1 + " main":                                                                   "ok",
-			sessionStartCommentCommand("owner/repo", 1, worktreePath1, "vigilante/issue-1-first"):                                                      "ok",
-			issuePromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"): "done",
+			"git worktree add -b vigilante/issue-1-first " + worktreePath1 + " main":                                                                       "ok",
+			sessionStartCommentCommand("owner/repo", 1, worktreePath1, "vigilante/issue-1-first"):                                                          "ok",
+			preflightPromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"): "baseline ok",
+			issuePromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"):     "done",
 		},
 	}
 	if err := app.state.EnsureLayout(); err != nil {
@@ -613,12 +614,14 @@ func TestScanOnceStartsMultipleIssuesUpToConfiguredLimit(t *testing.T) {
 			"gh api user --jq .login": "nicobistolfi\n",
 			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[]},{"number":2,"title":"second","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo/issues/2","labels":[]},{"number":3,"title":"third","createdAt":"2026-03-11T12:00:00Z","url":"https://github.com/owner/repo/issues/3","labels":[]}]`,
 			"git worktree prune": "ok",
-			"git worktree add -b vigilante/issue-1-first " + worktreePath1 + " main":                                                                     "ok",
-			"git worktree add -b vigilante/issue-2-second " + worktreePath2 + " main":                                                                    "ok",
-			sessionStartCommentCommand("owner/repo", 1, worktreePath1, "vigilante/issue-1-first"):                                                        "ok",
-			sessionStartCommentCommand("owner/repo", 2, worktreePath2, "vigilante/issue-2-second"):                                                       "ok",
-			issuePromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"):   "done",
-			issuePromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", "vigilante/issue-2-second"): "done",
+			"git worktree add -b vigilante/issue-1-first " + worktreePath1 + " main":                                                                         "ok",
+			"git worktree add -b vigilante/issue-2-second " + worktreePath2 + " main":                                                                        "ok",
+			sessionStartCommentCommand("owner/repo", 1, worktreePath1, "vigilante/issue-1-first"):                                                            "ok",
+			sessionStartCommentCommand("owner/repo", 2, worktreePath2, "vigilante/issue-2-second"):                                                           "ok",
+			preflightPromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"):   "baseline ok",
+			preflightPromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", "vigilante/issue-2-second"): "baseline ok",
+			issuePromptCommand(worktreePath1, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1-first"):       "done",
+			issuePromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", "vigilante/issue-2-second"):     "done",
 		},
 	}
 	if err := app.state.EnsureLayout(); err != nil {
@@ -733,9 +736,10 @@ func TestScanOnceBlocksFailedIssueDispatchAndContinuesToNextIssue(t *testing.T) 
 			"gh api user --jq .login": "nicobistolfi\n",
 			"gh issue list --repo owner/repo --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":1,"title":"first","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo/issues/1","labels":[]},{"number":2,"title":"second","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo/issues/2","labels":[]}]`,
 			"git worktree prune": "ok",
-			"git worktree add -b " + branch2 + " " + worktreePath2 + " main":                                                          "ok",
-			sessionStartCommentCommand("owner/repo", 2, worktreePath2, branch2):                                                       "ok",
-			issuePromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", branch2): "done",
+			"git worktree add -b " + branch2 + " " + worktreePath2 + " main":                                                              "ok",
+			sessionStartCommentCommand("owner/repo", 2, worktreePath2, branch2):                                                           "ok",
+			preflightPromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", branch2): "baseline ok",
+			issuePromptCommand(worktreePath2, "owner/repo", repoPath, 2, "second", "https://github.com/owner/repo/issues/2", branch2):     "done",
 		},
 		Errors: map[string]error{
 			"git worktree add -b vigilante/issue-1-first " + worktreePath1 + " main": errors.New("exit status 1: worktree add failed"),
@@ -798,15 +802,18 @@ func TestScanOnceEnforcesLimitsIndependentlyAcrossRepositories(t *testing.T) {
 			"gh issue list --repo owner/repo-a --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":1,"title":"first-a","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo-a/issues/1","labels":[]},{"number":2,"title":"second-a","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo-a/issues/2","labels":[]}]`,
 			"gh issue list --repo owner/repo-b --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":10,"title":"first-b","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo-b/issues/10","labels":[]},{"number":11,"title":"second-b","createdAt":"2026-03-10T12:00:00Z","url":"https://github.com/owner/repo-b/issues/11","labels":[]}]`,
 			"git worktree prune": "ok",
-			"git worktree add -b vigilante/issue-1-first-a " + worktreeA1 + " main":                                                                              "ok",
-			"git worktree add -b vigilante/issue-2-second-a " + worktreeA2 + " main":                                                                             "ok",
-			"git worktree add -b vigilante/issue-10-first-b " + worktreeB10 + " main":                                                                            "ok",
-			sessionStartCommentCommand("owner/repo-a", 1, worktreeA1, "vigilante/issue-1-first-a"):                                                               "ok",
-			sessionStartCommentCommand("owner/repo-a", 2, worktreeA2, "vigilante/issue-2-second-a"):                                                              "ok",
-			sessionStartCommentCommand("owner/repo-b", 10, worktreeB10, "vigilante/issue-10-first-b"):                                                            "ok",
-			issuePromptCommand(worktreeA1, "owner/repo-a", repoPathA, 1, "first-a", "https://github.com/owner/repo-a/issues/1", "vigilante/issue-1-first-a"):     "done",
-			issuePromptCommand(worktreeA2, "owner/repo-a", repoPathA, 2, "second-a", "https://github.com/owner/repo-a/issues/2", "vigilante/issue-2-second-a"):   "done",
-			issuePromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", "vigilante/issue-10-first-b"): "done",
+			"git worktree add -b vigilante/issue-1-first-a " + worktreeA1 + " main":                                                                                  "ok",
+			"git worktree add -b vigilante/issue-2-second-a " + worktreeA2 + " main":                                                                                 "ok",
+			"git worktree add -b vigilante/issue-10-first-b " + worktreeB10 + " main":                                                                                "ok",
+			sessionStartCommentCommand("owner/repo-a", 1, worktreeA1, "vigilante/issue-1-first-a"):                                                                   "ok",
+			sessionStartCommentCommand("owner/repo-a", 2, worktreeA2, "vigilante/issue-2-second-a"):                                                                  "ok",
+			sessionStartCommentCommand("owner/repo-b", 10, worktreeB10, "vigilante/issue-10-first-b"):                                                                "ok",
+			preflightPromptCommand(worktreeA1, "owner/repo-a", repoPathA, 1, "first-a", "https://github.com/owner/repo-a/issues/1", "vigilante/issue-1-first-a"):     "baseline ok",
+			preflightPromptCommand(worktreeA2, "owner/repo-a", repoPathA, 2, "second-a", "https://github.com/owner/repo-a/issues/2", "vigilante/issue-2-second-a"):   "baseline ok",
+			preflightPromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", "vigilante/issue-10-first-b"): "baseline ok",
+			issuePromptCommand(worktreeA1, "owner/repo-a", repoPathA, 1, "first-a", "https://github.com/owner/repo-a/issues/1", "vigilante/issue-1-first-a"):         "done",
+			issuePromptCommand(worktreeA2, "owner/repo-a", repoPathA, 2, "second-a", "https://github.com/owner/repo-a/issues/2", "vigilante/issue-2-second-a"):       "done",
+			issuePromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", "vigilante/issue-10-first-b"):     "done",
 		},
 	}
 	if err := app.state.EnsureLayout(); err != nil {
@@ -857,9 +864,10 @@ func TestScanOnceContinuesWhenOneRepositoryScanFails(t *testing.T) {
 			"gh api user --jq .login": "nicobistolfi\n",
 			"gh issue list --repo owner/repo-b --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": `[{"number":10,"title":"first-b","createdAt":"2026-03-09T12:00:00Z","url":"https://github.com/owner/repo-b/issues/10","labels":[]}]`,
 			"git worktree prune": "ok",
-			"git worktree add -b " + branchB10 + " " + worktreeB10 + " main":                                                                  "ok",
-			sessionStartCommentCommand("owner/repo-b", 10, worktreeB10, branchB10):                                                            "ok",
-			issuePromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", branchB10): "done",
+			"git worktree add -b " + branchB10 + " " + worktreeB10 + " main":                                                                      "ok",
+			sessionStartCommentCommand("owner/repo-b", 10, worktreeB10, branchB10):                                                                "ok",
+			preflightPromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", branchB10): "baseline ok",
+			issuePromptCommand(worktreeB10, "owner/repo-b", repoPathB, 10, "first-b", "https://github.com/owner/repo-b/issues/10", branchB10):     "done",
 		},
 		Errors: map[string]error{
 			"gh issue list --repo owner/repo-a --state open --assignee nicobistolfi --json number,title,createdAt,url,labels": errors.New("gh auth status failed"),
@@ -1183,8 +1191,8 @@ func TestScanOnceRecoversStalledSessionAndRedispatchesIssue(t *testing.T) {
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
-			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + filepath.Join(home, "repo") + "\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: " + branch + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.":                                                                                                                                                                                                                                                                                                                                                                                                                                                         "done",
-			"codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: " + filepath.Join(home, "repo") + "\nIssue: #1 - first\nIssue URL: https://github.com/owner/repo/issues/1\nWorktree path: " + worktreePath + "\nBranch: " + branch + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			preflightPromptCommand(worktreePath, "owner/repo", filepath.Join(home, "repo"), 1, "first", "https://github.com/owner/repo/issues/1", branch): "baseline ok",
+			issuePromptCommand(worktreePath, "owner/repo", filepath.Join(home, "repo"), 1, "first", "https://github.com/owner/repo/issues/1", branch):     "done",
 		},
 		Errors: map[string]error{
 			"git show-ref --verify --quiet refs/heads/" + branch:         errors.New("exit status 1"),
@@ -1331,5 +1339,17 @@ func sessionStartCommentCommand(repo string, issueNumber int, worktreePath strin
 }
 
 func issuePromptCommand(worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
-	return "codex exec --cd " + worktreePath + " --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: " + repo + "\nLocal repository path: " + repoPath + "\nIssue: #" + fmt.Sprintf("%d", issueNumber) + " - " + title + "\nIssue URL: " + issueURL + "\nWorktree path: " + worktreePath + "\nBranch: " + branch + "\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal."
+	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", skill.BuildIssuePrompt(
+		state.WatchTarget{Path: repoPath, Repo: repo},
+		ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
+		state.Session{WorktreePath: worktreePath, Branch: branch, Provider: "codex"},
+	))
+}
+
+func preflightPromptCommand(worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
+	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", skill.BuildIssuePreflightPrompt(
+		state.WatchTarget{Path: repoPath, Repo: repo},
+		ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
+		state.Session{WorktreePath: worktreePath, Branch: branch},
+	))
 }

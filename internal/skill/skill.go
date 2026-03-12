@@ -60,6 +60,24 @@ func BuildIssuePrompt(target state.WatchTarget, issue ghcli.Issue, session state
 	return strings.Join(lines, "\n")
 }
 
+func BuildIssuePreflightPrompt(target state.WatchTarget, issue ghcli.Issue, session state.Session) string {
+	lines := []string{
+		fmt.Sprintf("Repository: %s", target.Repo),
+		fmt.Sprintf("Local repository path: %s", target.Path),
+		fmt.Sprintf("Issue: #%d - %s", issue.Number, issue.Title),
+		fmt.Sprintf("Issue URL: %s", issue.URL),
+		fmt.Sprintf("Worktree path: %s", session.WorktreePath),
+		fmt.Sprintf("Branch: %s", session.Branch),
+		fmt.Sprintf("Before implementing issue #%d, validate the repository baseline from the current `main`-derived worktree without making any file changes.", issue.Number),
+		"Detect and run the appropriate build or equivalent verification command for this repository.",
+		"Detect and run the existing test suite when tests are present; if no tests exist, state that clearly and continue.",
+		"If the baseline build or tests fail, exit with a non-zero status and summarize the failing validation in the final output.",
+		"If the baseline is healthy, exit successfully with a short summary of the commands you validated.",
+		"Do not implement the issue, do not modify files, do not commit, and do not comment on GitHub during this preflight.",
+	}
+	return strings.Join(lines, "\n")
+}
+
 func displayProviderName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

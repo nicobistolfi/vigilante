@@ -11,6 +11,7 @@ import (
 
 	"github.com/nicobistolfi/vigilante/internal/environment"
 	ghcli "github.com/nicobistolfi/vigilante/internal/github"
+	"github.com/nicobistolfi/vigilante/internal/skill"
 	"github.com/nicobistolfi/vigilante/internal/state"
 	"github.com/nicobistolfi/vigilante/internal/testutil"
 )
@@ -32,7 +33,8 @@ func TestRunIssueSessionSuccess(t *testing.T) {
 				},
 				Tagline: "Make it simple, but significant.",
 			}): "ok",
-			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": "done",
+			preflightPromptCommand("/tmp/worktree", "owner/repo", "/tmp/repo", 7, "Demo", "https://github.com/owner/repo/issues/7", "vigilante/issue-7"): "baseline ok",
+			issuePromptCommand("/tmp/worktree", "owner/repo", "/tmp/repo", 7, "Demo", "https://github.com/owner/repo/issues/7", "vigilante/issue-7"):     "done",
 		},
 	}
 	env := &environment.Environment{OS: "darwin", Runner: runner}
@@ -73,19 +75,19 @@ func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
 			}): "ok",
 			"gh issue comment --repo owner/repo 7 --body " + ghcli.FormatProgressComment(ghcli.ProgressComment{
 				Stage:      "Blocked",
-				Emoji:      "🛑",
-				Percent:    95,
-				ETAMinutes: 10,
+				Emoji:      "🧱",
+				Percent:    25,
+				ETAMinutes: 15,
 				Items: []string{
-					"Codex execution stopped before the issue implementation completed.",
-					"Cause class: `provider_runtime_error`.",
-					"Next step: fix the blocker, then run `vigilante resume --repo owner/repo --issue 7` or request resume from GitHub.",
+					"Repository baseline validation failed before issue implementation began.",
+					"Cause class: `validation_failed`.",
+					"Next step: restore the repository baseline, then run `vigilante resume --repo owner/repo --issue 7` or request resume from GitHub.",
 				},
-				Tagline: "Plans are only good intentions unless they immediately degenerate into hard work.",
+				Tagline: "Strong foundations make calm debugging sessions.",
 			}): "ok",
 		},
 		Errors: map[string]error{
-			"codex exec --cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox Use the `vigilante-issue-implementation` skill for this task.\nRepository: owner/repo\nLocal repository path: /tmp/repo\nIssue: #7 - Demo\nIssue URL: https://github.com/owner/repo/issues/7\nWorktree path: /tmp/worktree\nBranch: vigilante/issue-7\nUse `gh issue comment` to comment on the issue when you start working, post a concise implementation plan before substantial coding, add milestone progress comments as you make progress, comment again when the PR is opened, push the branch, open a pull request, and report any execution failure back to the issue.\nFor the coding-agent start comment, use `## 🕹️ Coding Agent Launched: Codex` instead of a generic session-start title.\nUse the same GitHub comment structure for every non-terminal milestone comment: a short header with the current stage and optional emoji, a 10-cell progress bar with percentage, an `ETA: ~N minutes` line, 1-3 concise bullets covering what just happened and what is next, and an optional short playful quote or tagline.\nUse the issue as the source of truth for the requested behavior and keep the implementation minimal.": errors.New("codex exec [--cd /tmp/worktree --dangerously-bypass-approvals-and-sandbox prompt]: exit status 1"),
+			preflightPromptCommand("/tmp/worktree", "owner/repo", "/tmp/repo", 7, "Demo", "https://github.com/owner/repo/issues/7", "vigilante/issue-7"): errors.New("baseline validation failed: go test ./... exit status 1"),
 		},
 	}
 	env := &environment.Environment{OS: "darwin", Runner: runner}
@@ -98,14 +100,14 @@ func TestRunIssueSessionFailureCommentsOnIssue(t *testing.T) {
 	if got.Status != state.SessionStatusBlocked {
 		t.Fatalf("unexpected status: %#v", got)
 	}
-	if !strings.Contains(got.LastError, "exit status 1") {
+	if !strings.Contains(got.LastError, "go test ./...") {
 		t.Fatalf("unexpected error: %#v", got)
 	}
 	data, err := os.ReadFile(store.SessionLogPath(7))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "session failed") || !strings.Contains(string(data), "exit status 1") {
+	if !strings.Contains(string(data), "issue preflight failed") || !strings.Contains(string(data), "go test ./...") {
 		t.Fatalf("unexpected log: %s", string(data))
 	}
 }
@@ -181,4 +183,20 @@ func TestAppendSessionLogUsesLocalTimezone(t *testing.T) {
 	if strings.Contains(text, "Z] session started") {
 		t.Fatalf("expected local timezone log entry, got %q", text)
 	}
+}
+
+func preflightPromptCommand(worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
+	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", skill.BuildIssuePreflightPrompt(
+		state.WatchTarget{Path: repoPath, Repo: repo},
+		ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
+		state.Session{WorktreePath: worktreePath, Branch: branch},
+	))
+}
+
+func issuePromptCommand(worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
+	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", skill.BuildIssuePrompt(
+		state.WatchTarget{Path: repoPath, Repo: repo},
+		ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
+		state.Session{WorktreePath: worktreePath, Branch: branch, Provider: "codex"},
+	))
 }

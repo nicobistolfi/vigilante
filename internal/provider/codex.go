@@ -23,6 +23,18 @@ func (codexProvider) EnsureRuntimeInstalled(store *state.Store) error {
 	return skill.EnsureInstalled(store.CodexHome())
 }
 
+func (codexProvider) BuildIssuePreflightInvocation(task IssueTask) (Invocation, error) {
+	return Invocation{
+		Name: "codex",
+		Args: []string{
+			"exec",
+			"--cd", task.Session.WorktreePath,
+			"--dangerously-bypass-approvals-and-sandbox",
+			skill.BuildIssuePreflightPrompt(task.Target, task.Issue, task.Session),
+		},
+	}, nil
+}
+
 func (codexProvider) BuildIssueInvocation(task IssueTask) (Invocation, error) {
 	return Invocation{
 		Name: "codex",
