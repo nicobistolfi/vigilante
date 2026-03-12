@@ -15,7 +15,7 @@ import (
 func TestEnsureInstalledPrefersRepoSkillsWhenAvailable(t *testing.T) {
 	dir := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
+	for _, name := range VigilanteSkillNames() {
 		skillSourceDir := filepath.Join(repoRoot, "skills", name)
 		if err := os.MkdirAll(skillSourceDir, 0o755); err != nil {
 			t.Fatal(err)
@@ -44,7 +44,7 @@ func TestEnsureInstalledPrefersRepoSkillsWhenAvailable(t *testing.T) {
 	if err := EnsureInstalled(dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
+	for _, name := range VigilanteSkillNames() {
 		path := filepath.Join(dir, "skills", name, "SKILL.md")
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -76,7 +76,7 @@ func TestResolveSkillSourceFallsBackToEmbeddedAssets(t *testing.T) {
 		_ = os.Chdir(wd)
 	}()
 
-	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
+	for _, name := range VigilanteSkillNames() {
 		source, err := resolveSkillSource(name)
 		if err != nil {
 			t.Fatal(err)
@@ -120,7 +120,7 @@ func TestEnsureInstalledUsesEmbeddedAssetsOutsideRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
+	for _, name := range VigilanteSkillNames() {
 		path := filepath.Join(dir, "skills", name, "SKILL.md")
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)

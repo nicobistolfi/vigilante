@@ -15,9 +15,18 @@ import (
 
 const VigilanteIssueImplementation = "vigilante-issue-implementation"
 const VigilanteConflictResolution = "vigilante-conflict-resolution"
+const VigilanteCreateIssue = "vigilante-create-issue"
+
+func VigilanteSkillNames() []string {
+	return []string{
+		VigilanteIssueImplementation,
+		VigilanteConflictResolution,
+		VigilanteCreateIssue,
+	}
+}
 
 func EnsureInstalled(codexHome string) error {
-	for _, name := range []string{VigilanteIssueImplementation, VigilanteConflictResolution} {
+	for _, name := range VigilanteSkillNames() {
 		skillDir := filepath.Join(codexHome, "skills", name)
 		source, err := resolveSkillSource(name)
 		if err != nil {
