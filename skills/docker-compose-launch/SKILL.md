@@ -20,18 +20,23 @@ Use this skill from issue-implementation skills when the assigned repository nee
 - Read the repository docs for local development and test setup before launching anything.
 - Prefer repository-owned compose files or documented startup commands when they clearly cover the required database services.
 
-2. Choose the compose CLI deterministically
-- Prefer `docker compose` when available.
+2. Launch through the bundled helper
+- Run `scripts/launch.sh --worktree <path> --services <csv>` from this skill directory.
+- Use `--dry-run` first when you want to inspect the launch contract before starting containers.
+- The helper prints a stable JSON contract with the selected compose command, compose file path, launched services, connection details, and cleanup command.
+
+3. Choose the compose CLI deterministically
+- Prefer `docker compose` when the compose plugin is available.
 - Fall back to `docker-compose` only when the plugin form is unavailable.
 - If neither command works, stop and report the failure clearly to the parent implementation flow.
 
-3. Reuse repository compose assets when suitable
+4. Reuse repository compose assets when suitable
 - Look for repository-owned compose files in the assigned worktree.
 - Reuse them when they obviously define the required database service images or ports.
 - Keep the compose project name namespaced to the assigned worktree so concurrent issue sessions remain isolated.
 
-4. Generate a worktree-local compose file only when necessary
-- If the repository does not provide suitable compose assets, create a minimal compose file inside the assigned worktree under a tool-owned folder such as `.vigilante/docker-compose/`.
+5. Generate a worktree-local compose file only when necessary
+- If the repository does not provide suitable compose assets, create a minimal compose file inside the assigned worktree at `.vigilante/docker-compose.launch.yml`.
 - Support these default local services:
   - MySQL
   - MariaDB
@@ -39,7 +44,7 @@ Use this skill from issue-implementation skills when the assigned repository nee
   - MongoDB
 - Keep generated names, networks, and volumes namespaced to the assigned worktree or session.
 
-5. Launch and report outputs
+6. Launch and report outputs
 - Start the compose stack in detached mode.
 - Return structured runtime details the caller can continue with:
   - launched service names

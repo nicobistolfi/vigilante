@@ -87,6 +87,7 @@ func TestSetupCreatesStateLayoutAndSkill(t *testing.T) {
 		filepath.Join(app.state.Root(), "logs"),
 		filepath.Join(app.state.CodexHome(), "skills", skill.VigilanteIssueImplementation, "SKILL.md"),
 		filepath.Join(app.state.CodexHome(), "skills", skill.VigilanteConflictResolution, "SKILL.md"),
+		filepath.Join(app.state.CodexHome(), "skills", skill.VigilanteCreateIssue, "SKILL.md"),
 		filepath.Join(app.state.CodexHome(), "skills", skill.DockerComposeLaunch, "SKILL.md"),
 	} {
 		if _, err := os.Stat(path); err != nil {
