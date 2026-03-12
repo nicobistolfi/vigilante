@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vigilante Bazel Issue Implementation"
+  short_description: "Implement a Vigilante-dispatched issue in a Bazel monorepo"
+  default_prompt: "Use $vigilante-bazel-issue-implementation to implement the assigned Bazel issue in the provided worktree, following the shared docker-compose-launch contract when local services are required."

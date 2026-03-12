@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vigilante Turborepo Issue Implementation"
+  short_description: "Implement a Vigilante-dispatched issue in a Turborepo monorepo"
+  default_prompt: "Use $vigilante-turborepo-issue-implementation to implement the assigned Turborepo issue in the provided worktree, following the shared docker-compose-launch contract when local services are required."

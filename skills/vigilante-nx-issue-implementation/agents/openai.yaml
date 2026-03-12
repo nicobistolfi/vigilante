@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vigilante Nx Issue Implementation"
+  short_description: "Implement a Vigilante-dispatched issue in an Nx monorepo"
+  default_prompt: "Use $vigilante-nx-issue-implementation to implement the assigned Nx issue in the provided worktree, following the shared docker-compose-launch contract when local services are required."
