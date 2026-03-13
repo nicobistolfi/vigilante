@@ -19,6 +19,7 @@ const VigilanteCreateIssue = "vigilante-create-issue"
 
 const RuntimeCodex = "codex"
 const RuntimeClaude = "claude"
+const RuntimeGemini = "gemini"
 
 func VigilanteSkillNames() []string {
 	return []string{
@@ -46,6 +47,11 @@ func EnsureInstalled(runtime string, home string) error {
 				return err
 			}
 		}
+		if strings.TrimSpace(runtime) == RuntimeGemini {
+			if err := installGeminiCommand(home, name); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -59,9 +65,33 @@ func installTargets(runtime string, home string, name string) ([]string, error) 
 			filepath.Join(home, "skills", name),
 			filepath.Join(home, "commands", name),
 		}, nil
+	case RuntimeGemini:
+		return []string{
+			filepath.Join(home, "skills", name),
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported skill runtime %q", runtime)
 	}
+}
+
+func installGeminiCommand(home string, name string) error {
+	body, err := skillBody(name)
+	if err != nil {
+		return err
+	}
+	commandDir := filepath.Join(home, "commands")
+	if err := os.MkdirAll(commandDir, 0o755); err != nil {
+		return err
+	}
+	commandPath := filepath.Join(commandDir, name+".toml")
+	commandBody := strings.TrimSpace(fmt.Sprintf(`
+description = "Bundled Vigilante skill: %s"
+prompt = '''
+Follow these %q skill instructions directly for this task:
+%s
+'''
+`, name, "`"+name+"`", body)) + "\n"
+	return os.WriteFile(commandPath, []byte(commandBody), 0o644)
 }
 
 func skillBody(name string) (string, error) {
@@ -105,7 +135,7 @@ func BuildIssuePrompt(target state.WatchTarget, issue ghcli.Issue, session state
 
 func BuildIssuePromptForRuntime(runtime string, target state.WatchTarget, issue ghcli.Issue, session state.Session) string {
 	lines := []string{}
-	if strings.TrimSpace(runtime) == RuntimeClaude {
+	if runtimeUsesInlineSkillHeader(runtime) {
 		lines = append(lines, InlineSkillHeader(VigilanteIssueImplementation))
 	} else {
 		lines = append(lines, fmt.Sprintf("Use the `%s` skill for this task.", VigilanteIssueImplementation))
@@ -153,6 +183,8 @@ func displayProviderName(name string) string {
 		return "Claude Code"
 	case RuntimeCodex:
 		return "Codex"
+	case RuntimeGemini:
+		return "Gemini CLI"
 	}
 	parts := strings.FieldsFunc(name, func(r rune) bool {
 		return r == '-' || r == '_' || r == ' '
@@ -172,7 +204,7 @@ func BuildConflictResolutionPrompt(target state.WatchTarget, session state.Sessi
 
 func BuildConflictResolutionPromptForRuntime(runtime string, target state.WatchTarget, session state.Session, pr ghcli.PullRequest) string {
 	lines := []string{}
-	if strings.TrimSpace(runtime) == RuntimeClaude {
+	if runtimeUsesInlineSkillHeader(runtime) {
 		lines = append(lines, InlineSkillHeader(VigilanteConflictResolution))
 	} else {
 		lines = append(lines, fmt.Sprintf("Use the `%s` skill for this task.", VigilanteConflictResolution))
@@ -191,6 +223,15 @@ func BuildConflictResolutionPromptForRuntime(runtime string, target state.WatchT
 		"Keep the changes minimal and focused on getting the PR back to a merge-ready state.",
 	)
 	return strings.Join(lines, "\n")
+}
+
+func runtimeUsesInlineSkillHeader(runtime string) bool {
+	switch strings.TrimSpace(runtime) {
+	case RuntimeClaude, RuntimeGemini:
+		return true
+	default:
+		return false
+	}
 }
 
 func repoSkillPath(name string) string {

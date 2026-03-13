@@ -1646,15 +1646,15 @@ func (a *App) generateResumeFailureDiagnostic(ctx context.Context, session state
 	if workdir == "" {
 		workdir = session.RepoPath
 	}
-	output, err := a.env.Runner.Run(
-		ctx,
-		workdir,
-		"codex",
-		"exec",
-		"--cd", workdir,
-		"--dangerously-bypass-approvals-and-sandbox",
-		buildResumeFailureSummaryPrompt(session, previousStage),
-	)
+	selectedProvider, err := provider.Resolve(session.Provider)
+	if err != nil {
+		return resumeFailureDiagnostic{}, err
+	}
+	invocation, err := buildResumeFailureSummaryInvocation(selectedProvider, workdir, buildResumeFailureSummaryPrompt(session, previousStage))
+	if err != nil {
+		return resumeFailureDiagnostic{}, err
+	}
+	output, err := a.env.Runner.Run(ctx, invocation.Dir, invocation.Name, invocation.Args...)
 	if err != nil {
 		return resumeFailureDiagnostic{}, err
 	}
@@ -1667,6 +1667,43 @@ func (a *App) generateResumeFailureDiagnostic(ctx context.Context, session state
 		return resumeFailureDiagnostic{}, errors.New("resume diagnostic summary missing required fields")
 	}
 	return diagnostic, nil
+}
+
+func buildResumeFailureSummaryInvocation(selectedProvider provider.Provider, workdir string, prompt string) (provider.Invocation, error) {
+	switch selectedProvider.ID() {
+	case provider.ClaudeID:
+		return provider.Invocation{
+			Name: "claude",
+			Args: []string{
+				"--print",
+				"--cwd", workdir,
+				"--permission-mode", "acceptEdits",
+				prompt,
+			},
+		}, nil
+	case provider.GeminiID:
+		return provider.Invocation{
+			Dir:  workdir,
+			Name: "gemini",
+			Args: []string{
+				"--prompt",
+				prompt,
+				"--yolo",
+			},
+		}, nil
+	case provider.DefaultID:
+		fallthrough
+	default:
+		return provider.Invocation{
+			Name: "codex",
+			Args: []string{
+				"exec",
+				"--cd", workdir,
+				"--dangerously-bypass-approvals-and-sandbox",
+				prompt,
+			},
+		}, nil
+	}
 }
 
 func buildResumeFailureSummaryPrompt(session state.Session, previousStage string) string {

@@ -54,6 +54,26 @@ func TestResolveClaudeProvider(t *testing.T) {
 	}
 }
 
+func TestResolveGeminiProvider(t *testing.T) {
+	selectedProvider, err := Resolve(GeminiID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selectedProvider.DisplayName() != "Gemini CLI" {
+		t.Fatalf("unexpected provider: %#v", selectedProvider)
+	}
+	got := RequiredToolset(selectedProvider)
+	want := []string{"gemini", "gh", "git"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected tool count: %#v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected toolset: %#v", got)
+		}
+	}
+}
+
 func TestResolveIssueLabelUsesRegisteredProviderIDs(t *testing.T) {
 	original := registry
 	registry = map[string]Provider{

@@ -121,6 +121,17 @@ func (s *Store) ClaudeHome() string {
 	return filepath.Join(home, ".claude")
 }
 
+func (s *Store) GeminiHome() string {
+	if value := os.Getenv("GEMINI_HOME"); value != "" {
+		return value
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(s.root, ".gemini")
+	}
+	return filepath.Join(home, ".gemini")
+}
+
 func (s *Store) EnsureLayout() error {
 	for _, dir := range []string{s.root, s.LogsDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
