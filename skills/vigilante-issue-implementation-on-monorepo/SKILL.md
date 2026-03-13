@@ -10,9 +10,11 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 
 ## Monorepo Focus
 - Read the repo/process context supplied in the prompt before changing code.
+- Treat explicit stack metadata from Vigilante as the routing source of truth and preserve safe fallback behavior when the stack is `unknown`.
 - Limit edits to the packages, apps, or shared modules required for the issue.
 - Prefer targeted validation for the touched workspace scope before broader monorepo validation.
 - Avoid unrelated cross-package refactors unless they are required to complete the issue safely.
+- Use the shared `docker-compose-launch` contract from the prompt when local services are required, and reuse `vigilante-local-service-dependencies` when the implementation workflow needs repository-native service setup help before falling back.
 
 ## Workflow
 1. Inspect issue and repository constraints
@@ -36,7 +38,8 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 - Never edit the root checkout when a worktree was assigned.
 - Keep changes scoped to the issue.
 - Prefer native repository tooling and avoid unnecessary new dependencies.
-- If the affected workspace needs local services, call the bundled `vigilante-local-service-dependencies` skill and reuse its structured output before creating workspace-specific ad hoc service setup.
+- If the affected workspace needs local services, call the shared `docker-compose-launch` integration point described in the prompt and reuse its structured output before creating workspace-specific ad hoc service setup.
+- When repository-native setup is unclear, call the bundled `vigilante-local-service-dependencies` skill first so the service launch stays consistent with the shared contract.
 
 5. Validate incrementally
 - Run the most relevant package/app/workspace checks first, then expand only if needed.
@@ -50,3 +53,11 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 7. Report progress and failures clearly
 - Use `gh issue comment` for progress updates, milestone updates, PR creation, and execution failures.
 - Keep comments concise, factual, and tied to real progress.
+
+## Shared Service-Launch Contract
+When the prompt says local services are required, the monorepo implementation flow should treat `docker-compose-launch` as the shared handoff point instead of embedding stack-specific compose logic.
+
+- Invoke it only for local implementation or test dependencies in the assigned worktree.
+- Supported baseline service types are `mysql`, `mariadb`, `postgres`, and `mongodb`.
+- Expect structured output that includes `status`, `services`, `mechanism`, `commands`, `connection`, `cleanup`, `artifacts`, and `notes`.
+- Reuse returned connection and cleanup details in later workspace commands instead of inventing a parallel contract inside the skill.
