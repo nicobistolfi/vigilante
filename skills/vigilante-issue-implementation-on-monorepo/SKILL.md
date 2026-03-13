@@ -36,6 +36,7 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 - Never edit the root checkout when a worktree was assigned.
 - Keep changes scoped to the issue.
 - Prefer native repository tooling and avoid unnecessary new dependencies.
+- If the affected workspace needs local services, call the bundled `vigilante-local-service-dependencies` skill and reuse its structured output before creating workspace-specific ad hoc service setup.
 
 5. Validate incrementally
 - Run the most relevant package/app/workspace checks first, then expand only if needed.

@@ -141,6 +141,19 @@ func TestBuildIssuePrompt(t *testing.T) {
 	}
 }
 
+func TestVigilanteSkillNamesIncludesLocalServiceDependencies(t *testing.T) {
+	found := false
+	for _, name := range VigilanteSkillNames() {
+		if name == VigilanteLocalServiceDependencies {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected %s to be bundled", VigilanteLocalServiceDependencies)
+	}
+}
+
 func TestBuildIssuePromptSelectsMonorepoSkill(t *testing.T) {
 	target := state.WatchTarget{
 		Path: "/tmp/repo",
@@ -339,6 +352,42 @@ func TestVigilanteCreateIssueSkillIncludesTypeSpecificDetailGuidance(t *testing.
 	} {
 		if !strings.Contains(text, snippet) {
 			t.Fatalf("skill missing %q", snippet)
+		}
+	}
+}
+
+func TestLocalServiceDependenciesSkillCoversStructuredOutputAndFailureModes(t *testing.T) {
+	body, err := os.ReadFile(repoSkillPath(VigilanteLocalServiceDependencies))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(body)
+	for _, snippet := range []string{
+		"Prefer repository-provided service startup mechanisms",
+		"repository-owned `docker compose` or `docker-compose` files before generating anything new",
+		"Docker Compose is an allowed fallback, not the defining abstraction.",
+		"`status`: `ready`, `not_needed`, or `failed`",
+		"`mechanism`: `repo_native`, `repo_compose`, `repo_script`, `repo_task_runner`, or `generated_fallback`",
+		"missing local tooling",
+		"unsupported repository setup",
+		"startup failure",
+		"readiness or connection failure",
+	} {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("skill missing %q", snippet)
+		}
+	}
+}
+
+func TestIssueImplementationSkillsReferenceLocalServiceDependencySkill(t *testing.T) {
+	for _, name := range []string{VigilanteIssueImplementation, VigilanteIssueImplementationOnMonorepo} {
+		body, err := os.ReadFile(repoSkillPath(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), VigilanteLocalServiceDependencies) {
+			t.Fatalf("%s does not mention %s", name, VigilanteLocalServiceDependencies)
 		}
 	}
 }

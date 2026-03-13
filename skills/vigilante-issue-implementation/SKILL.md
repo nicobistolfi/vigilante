@@ -43,6 +43,10 @@ Require these inputs from Vigilante:
 - Prefer native repository tooling and avoid unnecessary new dependencies.
 - Preserve existing coding patterns unless the issue requires a different approach.
 
+Service dependencies:
+- If app startup, migrations, or tests need local services, call the bundled `vigilante-local-service-dependencies` skill before inventing ad hoc setup steps.
+- Prefer the skill's repository-native path first, and use its structured output to decide which env vars, commands, or cleanup steps the rest of the implementation should use.
+
 5. Validate incrementally
 - Run relevant tests, builds, or linters for the changed area before concluding work.
 - Prefer targeted validation first, then broader validation when necessary.

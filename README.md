@@ -177,6 +177,7 @@ Expected behavior:
   - `vigilante-issue-implementation-on-monorepo`
   - `vigilante-conflict-resolution`
   - `vigilante-create-issue`
+  - `vigilante-local-service-dependencies`
 - installs or updates the daemon definition when requested
 
 ## Development Mode
