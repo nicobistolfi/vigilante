@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vigilante Local Service Dependencies"
+  short_description: "Prepare local repo dependencies by preferring native startup workflows before falling back"
+  default_prompt: "Use $vigilante-local-service-dependencies to prepare local service dependencies for the assigned implementation worktree, prefer repository-native setup, and return structured service status and cleanup details."

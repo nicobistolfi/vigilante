@@ -19,6 +19,7 @@ const VigilanteIssueImplementation = "vigilante-issue-implementation"
 const VigilanteIssueImplementationOnMonorepo = "vigilante-issue-implementation-on-monorepo"
 const VigilanteConflictResolution = "vigilante-conflict-resolution"
 const VigilanteCreateIssue = "vigilante-create-issue"
+const VigilanteLocalServiceDependencies = "vigilante-local-service-dependencies"
 
 const RuntimeCodex = "codex"
 const RuntimeClaude = "claude"
@@ -30,6 +31,7 @@ func VigilanteSkillNames() []string {
 		VigilanteIssueImplementationOnMonorepo,
 		VigilanteConflictResolution,
 		VigilanteCreateIssue,
+		VigilanteLocalServiceDependencies,
 	}
 }
 
