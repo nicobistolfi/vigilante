@@ -72,8 +72,30 @@ func TestClassifyMonorepoFromWorkspaceSignals(t *testing.T) {
 	if got.Shape != ShapeMonorepo {
 		t.Fatalf("expected monorepo classification, got %#v", got)
 	}
+	if got.Stack.Kind != StackUnknown {
+		t.Fatalf("expected unknown stack fallback, got %#v", got.Stack)
+	}
 	if len(got.ProcessHints.WorkspaceConfigFiles) != 1 || got.ProcessHints.WorkspaceConfigFiles[0] != "pnpm-workspace.yaml" {
 		t.Fatalf("expected workspace config hint, got %#v", got.ProcessHints)
+	}
+}
+
+func TestClassifyMonorepoStackFromTurboConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "turbo.json"), []byte("{\"pipeline\":{}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := Classify(dir)
+
+	if got.Shape != ShapeMonorepo {
+		t.Fatalf("expected monorepo classification, got %#v", got)
+	}
+	if got.Stack.Kind != StackTurborepo {
+		t.Fatalf("expected turborepo stack, got %#v", got.Stack)
+	}
+	if len(got.Stack.Evidence) != 1 || got.Stack.Evidence[0] != "turbo.json" {
+		t.Fatalf("expected turbo.json evidence, got %#v", got.Stack)
 	}
 }
 
@@ -87,6 +109,9 @@ func TestClassifyFallsBackSafelyForAmbiguousRepo(t *testing.T) {
 
 	if got.Shape != ShapeTraditional {
 		t.Fatalf("expected safe fallback to traditional, got %#v", got)
+	}
+	if got.Stack.Kind != "" {
+		t.Fatalf("expected no stack classification, got %#v", got.Stack)
 	}
 	if len(got.ProcessHints.MultiPackageRoots) != 1 || got.ProcessHints.MultiPackageRoots[0] != "apps" {
 		t.Fatalf("expected ambiguous multi-package hint to be preserved, got %#v", got.ProcessHints)

@@ -373,6 +373,9 @@ func TestWatchPersistsRepoClassification(t *testing.T) {
 	if targets[0].Classification.Shape != repo.ShapeMonorepo {
 		t.Fatalf("expected monorepo classification to persist: %#v", targets[0])
 	}
+	if targets[0].Classification.Stack.Kind != repo.StackUnknown {
+		t.Fatalf("expected unknown monorepo stack to persist: %#v", targets[0])
+	}
 }
 
 func TestWatchWithGeminiProviderPersistsSelection(t *testing.T) {

@@ -1,20 +1,18 @@
 ---
-name: vigilante-issue-implementation-on-monorepo
-description: Implement a GitHub issue end-to-end when Vigilante dispatches work for a watched monorepo. Use the provided worktree, respect repository instructions, comment on the issue as work progresses, and report failures back to GitHub.
+name: vigilante-issue-implementation-on-turborepo
+description: Implement a GitHub issue end-to-end when Vigilante dispatches work for a watched Turborepo monorepo. Use the provided worktree, respect repository instructions, comment on the issue as work progresses, and report failures back to GitHub.
 ---
 
-# Vigilante Monorepo Issue Implementation
+# Vigilante Turborepo Issue Implementation
 
 ## Overview
 Implement one GitHub issue from Vigilante dispatch through validated code changes, a pushed branch, and an opened pull request from the provided worktree. Always work inside the assigned worktree, respect repository instructions, and keep the GitHub issue updated with start, plan, progress, PR, and failure comments.
 
-## Monorepo Focus
+## Turborepo Focus
 - Read the repo/process context supplied in the prompt before changing code.
-- Treat explicit stack metadata from Vigilante as the routing source of truth and preserve safe fallback behavior when the stack is `unknown`.
-- Limit edits to the packages, apps, or shared modules required for the issue.
-- Prefer targeted validation for the touched workspace scope before broader monorepo validation.
-- Avoid unrelated cross-package refactors unless they are required to complete the issue safely.
-- Use the shared `docker-compose-launch` contract from the prompt when local services are required, and reuse `vigilante-local-service-dependencies` when the implementation workflow needs repository-native service setup help before falling back.
+- Limit edits to the apps, packages, and shared modules required for the issue.
+- Prefer targeted `turbo`, package, or workspace validation for the touched area before broader monorepo checks.
+- If the repo needs local databases or dependent services, use the shared `docker-compose-launch` contract supplied in the prompt instead of creating ad hoc compose logic.
 
 ## Workflow
 1. Inspect issue and repository constraints
@@ -38,11 +36,9 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 - Never edit the root checkout when a worktree was assigned.
 - Keep changes scoped to the issue.
 - Prefer native repository tooling and avoid unnecessary new dependencies.
-- If the affected workspace needs local services, call the shared `docker-compose-launch` integration point described in the prompt and reuse its structured output before creating workspace-specific ad hoc service setup.
-- When repository-native setup is unclear, call the bundled `vigilante-local-service-dependencies` skill first so the service launch stays consistent with the shared contract.
 
 5. Validate incrementally
-- Run the most relevant package/app/workspace checks first, then expand only if needed.
+- Run the most relevant app/package/workspace checks first, then expand only if needed.
 - If validation fails, determine whether the problem is in the code, test setup, or environment before retrying.
 
 6. Commit, push, and open a pull request
@@ -53,11 +49,3 @@ Implement one GitHub issue from Vigilante dispatch through validated code change
 7. Report progress and failures clearly
 - Use `gh issue comment` for progress updates, milestone updates, PR creation, and execution failures.
 - Keep comments concise, factual, and tied to real progress.
-
-## Shared Service-Launch Contract
-When the prompt says local services are required, the monorepo implementation flow should treat `docker-compose-launch` as the shared handoff point instead of embedding stack-specific compose logic.
-
-- Invoke it only for local implementation or test dependencies in the assigned worktree.
-- Supported baseline service types are `mysql`, `mariadb`, `postgres`, and `mongodb`.
-- Expect structured output that includes `status`, `services`, `mechanism`, `commands`, `connection`, `cleanup`, `artifacts`, and `notes`.
-- Reuse returned connection and cleanup details in later workspace commands instead of inventing a parallel contract inside the skill.

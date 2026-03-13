@@ -20,6 +20,22 @@ const (
 	ShapeMonorepo    Shape = "monorepo"
 )
 
+type Stack string
+
+const (
+	StackUnknown   Stack = "unknown"
+	StackTurborepo Stack = "turborepo"
+	StackNx        Stack = "nx"
+	StackRush      Stack = "rush"
+	StackBazel     Stack = "bazel"
+	StackGradle    Stack = "gradle"
+)
+
+type StackDetails struct {
+	Kind     Stack    `json:"kind,omitempty"`
+	Evidence []string `json:"evidence,omitempty"`
+}
+
 type ProcessHints struct {
 	WorkspaceConfigFiles   []string `json:"workspace_config_files,omitempty"`
 	WorkspaceManifestFiles []string `json:"workspace_manifest_files,omitempty"`
@@ -28,6 +44,7 @@ type ProcessHints struct {
 
 type Classification struct {
 	Shape        Shape        `json:"shape"`
+	Stack        StackDetails `json:"stack,omitempty"`
 	ProcessHints ProcessHints `json:"process_hints,omitempty"`
 }
 
@@ -94,15 +111,49 @@ func Classify(path string) Classification {
 			classification.ProcessHints.MultiPackageRoots = append(classification.ProcessHints.MultiPackageRoots, root)
 		}
 	}
+	classification.Stack = detectMonorepoStack(absPath)
 	if len(classification.ProcessHints.WorkspaceConfigFiles) > 0 ||
 		len(classification.ProcessHints.WorkspaceManifestFiles) > 0 ||
-		len(classification.ProcessHints.MultiPackageRoots) >= 2 {
+		len(classification.ProcessHints.MultiPackageRoots) >= 2 ||
+		classification.Stack.Kind != "" {
 		classification.Shape = ShapeMonorepo
+	}
+	if classification.Shape == ShapeMonorepo && classification.Stack.Kind == "" {
+		classification.Stack.Kind = StackUnknown
 	}
 	slices.Sort(classification.ProcessHints.WorkspaceConfigFiles)
 	slices.Sort(classification.ProcessHints.WorkspaceManifestFiles)
 	slices.Sort(classification.ProcessHints.MultiPackageRoots)
+	slices.Sort(classification.Stack.Evidence)
 	return classification
+}
+
+func detectMonorepoStack(path string) StackDetails {
+	details := StackDetails{}
+	for _, candidate := range []struct {
+		kind Stack
+		file string
+	}{
+		{kind: StackTurborepo, file: "turbo.json"},
+		{kind: StackNx, file: "nx.json"},
+		{kind: StackRush, file: "rush.json"},
+		{kind: StackBazel, file: "WORKSPACE"},
+		{kind: StackBazel, file: "WORKSPACE.bazel"},
+		{kind: StackBazel, file: "MODULE.bazel"},
+		{kind: StackGradle, file: "settings.gradle"},
+		{kind: StackGradle, file: "settings.gradle.kts"},
+	} {
+		if !fileExists(filepath.Join(path, candidate.file)) {
+			continue
+		}
+		if details.Kind == "" {
+			details.Kind = candidate.kind
+		}
+		if details.Kind == candidate.kind {
+			details.Evidence = append(details.Evidence, candidate.file)
+		}
+	}
+	return details
 }
 
 func ParseGitHubRepo(remote string) (string, error) {
