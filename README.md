@@ -6,7 +6,7 @@
 
 `vigilante` is a Go CLI and background service that watches local Git repositories, discovers their GitHub remotes, monitors open issues with the GitHub CLI, and orchestrates headless coding agent sessions in isolated git worktrees.
 
-The initial target platforms are macOS and Ubuntu. The first implementation should keep dependencies minimal and lean on existing system tools where possible: `git`, `gh`, one or more headless coding agent CLIs such as `claude code` and `codex`.
+The initial target platforms are macOS and Ubuntu. The first implementation should keep dependencies minimal and lean on existing system tools where possible: `git`, `gh`, one or more headless coding agent CLIs such as `claude code`, `codex`, and `gemini`.
 
 ## What Vigilante Is
 
@@ -43,7 +43,7 @@ For each watched repository:
 3. Ensure required tools are available:
    - `git`
    - `gh`
-   - the configured coding-agent provider CLI (`codex` or `claude`)
+   - the configured coding-agent provider CLI (`codex`, `claude`, or `gemini`)
 4. Ensure the coding-agent issue implementation skill from `skills/vigilante-issue-implementation/` is installed during setup, including its companion agent metadata.
 5. Query GitHub for open issues.
 6. Determine which issues are eligible for execution.
@@ -73,7 +73,7 @@ Upgrade later with:
 brew upgrade --cask vigilante
 ```
 
-### `vigilante watch [--assignee <value>] [--max-parallel <value>] [--provider <codex|claude>] <path>`
+### `vigilante watch [--assignee <value>] [--max-parallel <value>] [--provider <codex|claude|gemini>] <path>`
 
 Register a local repository for issue monitoring.
 
@@ -104,6 +104,10 @@ vigilante watch --max-parallel 3 ~/hello-world-app
 
 ```sh
 vigilante watch --provider claude ~/hello-world-app
+```
+
+```sh
+vigilante watch --provider gemini ~/hello-world-app
 ```
 
 ### `vigilante watch -d <path>`
@@ -157,7 +161,7 @@ Remove a repository from the watchlist without deleting the repository itself.
 Run the long-lived watcher loop in the foreground. This is the process the OS service should execute.
 By default it scans watched repositories every 1 minute. Use `--interval` to override that cadence for manual runs.
 
-### `vigilante setup [--provider <codex|claude>]`
+### `vigilante setup [--provider <codex|claude|gemini>]`
 
 Prepare the machine for autonomous execution.
 
@@ -333,7 +337,7 @@ Initial rules:
 - enforce `max_parallel_sessions` independently for each watched repository
 - count both running implementation sessions and open-PR maintenance sessions against that repository limit
 - avoid duplicate work across multiple daemon scans
-- allow an issue label that exactly matches a registered provider id, such as `codex` or `claude`, to override the watch target provider for that issue only
+- allow an issue label that exactly matches a registered provider id, such as `codex`, `claude`, or `gemini`, to override the watch target provider for that issue only
 - if more than one provider-id label is present on the same issue, skip dispatch instead of choosing a provider arbitrarily
 - prefer oldest eligible open issue first unless later prioritization rules are added
 
@@ -350,7 +354,7 @@ When `vigilante` launches a coding agent for an issue, it should:
 - instruct the agent to post progress comments during execution
 - instruct the agent to report failures on the issue if execution aborts
 
-The agent invocation remains a subprocess wrapper around an installed coding CLI such as `codex` or `claude`, while keeping the orchestration behavior provider-neutral.
+The agent invocation remains a subprocess wrapper around an installed coding CLI such as `codex`, `claude`, or `gemini`, while keeping the orchestration behavior provider-neutral.
 
 ## GitHub Integration
 

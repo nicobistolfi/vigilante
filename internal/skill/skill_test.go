@@ -203,12 +203,63 @@ func TestEnsureInstalledForClaudeCreatesCommandsAndSkills(t *testing.T) {
 	}
 }
 
+func TestEnsureInstalledForGeminiCreatesCommandsAndSkills(t *testing.T) {
+	dir := t.TempDir()
+	repoRoot := t.TempDir()
+	for _, name := range VigilanteSkillNames() {
+		skillSourceDir := filepath.Join(repoRoot, "skills", name)
+		if err := os.MkdirAll(skillSourceDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillSourceDir, "SKILL.md"), []byte("# repo skill\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Chdir(wd)
+	}()
+
+	if err := EnsureInstalled(RuntimeGemini, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range VigilanteSkillNames() {
+		for _, path := range []string{
+			filepath.Join(dir, "skills", name, "SKILL.md"),
+			filepath.Join(dir, "commands", name+".toml"),
+		} {
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("expected %s to exist: %v", path, err)
+			}
+		}
+	}
+}
+
 func TestBuildIssuePromptForClaudeInlinesSkillInstructions(t *testing.T) {
 	target := state.WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}
 	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
 	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "claude"}
 	prompt := BuildIssuePromptForRuntime(RuntimeClaude, target, issue, session)
 	for _, text := range []string{"Follow these `vigilante-issue-implementation` skill instructions directly", "Coding Agent Launched: Claude Code", "Issue: #12 - Fix bug"} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("prompt missing %q: %s", text, prompt)
+		}
+	}
+}
+
+func TestBuildIssuePromptForGeminiInlinesSkillInstructions(t *testing.T) {
+	target := state.WatchTarget{Path: "/tmp/repo", Repo: "owner/repo"}
+	issue := ghcli.Issue{Number: 12, Title: "Fix bug", URL: "https://example.com/issues/12"}
+	session := state.Session{WorktreePath: "/tmp/worktree", Branch: "vigilante/issue-12", Provider: "gemini"}
+	prompt := BuildIssuePromptForRuntime(RuntimeGemini, target, issue, session)
+	for _, text := range []string{"Follow these `vigilante-issue-implementation` skill instructions directly", "Coding Agent Launched: Gemini CLI", "Issue: #12 - Fix bug"} {
 		if !strings.Contains(prompt, text) {
 			t.Fatalf("prompt missing %q: %s", text, prompt)
 		}

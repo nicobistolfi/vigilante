@@ -94,6 +94,38 @@ func TestSetupCreatesStateLayoutAndSkill(t *testing.T) {
 	}
 }
 
+func TestSetupWithGeminiCreatesGeminiSkillAssets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+	t.Setenv("GEMINI_HOME", filepath.Join(home, ".gemini"))
+
+	app := New()
+	app.stdout = testutil.IODiscard{}
+	app.stderr = testutil.IODiscard{}
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "gemini": "/usr/bin/gemini"},
+		Outputs: map[string]string{
+			"gh auth status": "ok",
+		},
+	}
+
+	if err := app.SetupWithProvider(context.Background(), false, "gemini"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		filepath.Join(app.state.GeminiHome(), "skills", skill.VigilanteIssueImplementation, "SKILL.md"),
+		filepath.Join(app.state.GeminiHome(), "commands", skill.VigilanteIssueImplementation+".toml"),
+		filepath.Join(app.state.GeminiHome(), "skills", skill.VigilanteConflictResolution, "SKILL.md"),
+		filepath.Join(app.state.GeminiHome(), "commands", skill.VigilanteConflictResolution+".toml"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected %s to exist: %v", path, err)
+		}
+	}
+}
+
 func TestWatchListAndUnwatch(t *testing.T) {
 	home := t.TempDir()
 	repoPath := filepath.Join(home, "repo")
@@ -236,6 +268,39 @@ func TestWatchWithProviderPersistsClaudeSelection(t *testing.T) {
 	}
 	if len(targets) != 1 || targets[0].Provider != "claude" {
 		t.Fatalf("expected claude provider to persist: %#v", targets)
+	}
+}
+
+func TestWatchWithGeminiProviderPersistsSelection(t *testing.T) {
+	home := t.TempDir()
+	repoPath := filepath.Join(home, "repo")
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := New()
+	app.stdout = testutil.IODiscard{}
+	app.stderr = testutil.IODiscard{}
+	app.env.Runner = testutil.FakeRunner{
+		Outputs: map[string]string{
+			testutil.Key("git", "rev-parse", "--is-inside-work-tree"):                  "true\n",
+			testutil.Key("git", "remote", "get-url", "origin"):                         "git@github.com:nicobistolfi/vigilante.git\n",
+			testutil.Key("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main\n",
+		},
+	}
+
+	if err := app.WatchWithProvider(context.Background(), repoPath, false, nil, "", 0, "gemini"); err != nil {
+		t.Fatal(err)
+	}
+
+	targets, err := app.state.LoadWatchTargets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0].Provider != "gemini" {
+		t.Fatalf("expected gemini provider to persist: %#v", targets)
 	}
 }
 
@@ -826,6 +891,75 @@ func TestResumeBlockedSessionFallsBackWhenDiagnosticSummaryFails(t *testing.T) {
 	}
 	if session.LastResumeFailureFingerprint == "" || session.LastResumeFailureCommentedAt == "" {
 		t.Fatalf("expected fallback comment metadata to be tracked: %#v", session)
+	}
+}
+
+func TestResumeBlockedSessionUsesGeminiForDiagnosticSummary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("VIGILANTE_HOME", filepath.Join(home, ".vigilante"))
+	t.Setenv("HOME", home)
+
+	repoPath := filepath.Join(home, "repo")
+	worktreePath := filepath.Join(repoPath, ".worktrees", "vigilante", "issue-1")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	app := New()
+	app.stdout = &bytes.Buffer{}
+	app.stderr = testutil.IODiscard{}
+	session := state.Session{
+		RepoPath:       repoPath,
+		Repo:           "owner/repo",
+		Provider:       "gemini",
+		IssueNumber:    1,
+		IssueTitle:     "first",
+		IssueURL:       "https://github.com/owner/repo/issues/1",
+		Branch:         "vigilante/issue-1",
+		WorktreePath:   worktreePath,
+		Status:         state.SessionStatusBlocked,
+		BlockedStage:   "issue_execution",
+		BlockedReason:  state.BlockedReason{Kind: "provider_auth", Operation: "gemini --prompt", Summary: "session expired", Detail: "session expired"},
+		ResumeRequired: true,
+		ResumeHint:     "vigilante resume --repo owner/repo --issue 1",
+	}
+	failedSession := session
+	failedSession.LastResumeSource = "comment"
+	failedSession.LastError = "session expired again"
+	failedSession.BlockedReason = state.BlockedReason{Kind: "provider_auth", Operation: "gemini --prompt", Summary: "session expired again", Detail: "session expired again"}
+	expectedComment := ghcli.FormatProgressComment(ghcli.ProgressComment{
+		Stage:      "Resume Blocked",
+		Emoji:      "🧱",
+		Percent:    90,
+		ETAMinutes: 10,
+		Items: []string{
+			"Resume could not rerun `gemini --prompt` for `vigilante/issue-1`.",
+			"Gemini reported an expired session, so Vigilante could not continue the blocked work.",
+			"Failure type: `provider_related` (`provider_auth`). Re-authenticate Gemini locally, then retry `@vigilanteai resume`.",
+		},
+		Tagline: "No mystery errors left behind.",
+	})
+
+	app.env.Runner = testutil.FakeRunner{
+		LookPaths: map[string]string{"gemini": "/usr/bin/gemini"},
+		Outputs: map[string]string{
+			"gemini --version": "gemini 1.0.0",
+			resumeDiagnosticSummaryCommandForProvider(worktreePath, "gemini", failedSession, "issue_execution"): `{"step":"Resume could not rerun ` + "`gemini --prompt`" + ` for ` + "`vigilante/issue-1`" + `.","why":"Gemini reported an expired session, so Vigilante could not continue the blocked work.","classification":"provider_related","next_step":"Re-authenticate Gemini locally, then retry ` + "`@vigilanteai resume`" + `."}`,
+			"gh issue comment --repo owner/repo 1 --body " + expectedComment:                                    "ok",
+		},
+		Errors: map[string]error{
+			issuePromptCommandForProvider("gemini", worktreePath, "owner/repo", repoPath, 1, "first", "https://github.com/owner/repo/issues/1", "vigilante/issue-1"): errors.New("session expired again"),
+		},
+	}
+
+	if err := app.resumeBlockedSession(context.Background(), &session, "comment"); err != nil {
+		t.Fatal(err)
+	}
+	if session.Status != state.SessionStatusBlocked {
+		t.Fatalf("expected session to remain blocked: %#v", session)
+	}
+	if session.LastResumeFailureFingerprint == "" || session.LastResumeFailureCommentedAt == "" {
+		t.Fatalf("expected Gemini failure comment metadata to be tracked: %#v", session)
 	}
 }
 
@@ -2101,6 +2235,20 @@ func issuePromptCommand(worktreePath string, repo string, repoPath string, issue
 	))
 }
 
+func issuePromptCommandForProvider(providerID string, worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
+	switch providerID {
+	case "gemini":
+		return testutil.Key("gemini", "--prompt", skill.BuildIssuePromptForRuntime(
+			skill.RuntimeGemini,
+			state.WatchTarget{Path: repoPath, Repo: repo},
+			ghcli.Issue{Number: issueNumber, Title: title, URL: issueURL},
+			state.Session{WorktreePath: worktreePath, Branch: branch, Provider: "gemini"},
+		), "--yolo")
+	default:
+		return issuePromptCommand(worktreePath, repo, repoPath, issueNumber, title, issueURL, branch)
+	}
+}
+
 func preflightPromptCommand(worktreePath string, repo string, repoPath string, issueNumber int, title string, issueURL string, branch string) string {
 	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", skill.BuildIssuePreflightPrompt(
 		state.WatchTarget{Path: repoPath, Repo: repo},
@@ -2111,4 +2259,13 @@ func preflightPromptCommand(worktreePath string, repo string, repoPath string, i
 
 func resumeDiagnosticSummaryCommand(worktreePath string, session state.Session, previousStage string) string {
 	return testutil.Key("codex", "exec", "--cd", worktreePath, "--dangerously-bypass-approvals-and-sandbox", buildResumeFailureSummaryPrompt(session, previousStage))
+}
+
+func resumeDiagnosticSummaryCommandForProvider(worktreePath string, providerID string, session state.Session, previousStage string) string {
+	switch providerID {
+	case "gemini":
+		return testutil.Key("gemini", "--prompt", buildResumeFailureSummaryPrompt(session, previousStage), "--yolo")
+	default:
+		return resumeDiagnosticSummaryCommand(worktreePath, session, previousStage)
+	}
 }
