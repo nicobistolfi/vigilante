@@ -179,6 +179,7 @@ Expected behavior:
 - installs the bundled coding-agent skills for regular runtime use, including any companion files under each skill directory
   - `vigilante-issue-implementation`
   - `vigilante-issue-implementation-on-monorepo`
+  - `vigilante-issue-implementation-on-turborepo`
   - `vigilante-conflict-resolution`
   - `vigilante-create-issue`
   - `vigilante-local-service-dependencies`

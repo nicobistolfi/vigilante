@@ -17,6 +17,7 @@ import (
 
 const VigilanteIssueImplementation = "vigilante-issue-implementation"
 const VigilanteIssueImplementationOnMonorepo = "vigilante-issue-implementation-on-monorepo"
+const VigilanteIssueImplementationOnTurborepo = "vigilante-issue-implementation-on-turborepo"
 const VigilanteConflictResolution = "vigilante-conflict-resolution"
 const VigilanteCreateIssue = "vigilante-create-issue"
 const VigilanteLocalServiceDependencies = "vigilante-local-service-dependencies"
@@ -29,6 +30,7 @@ func VigilanteSkillNames() []string {
 	return []string{
 		VigilanteIssueImplementation,
 		VigilanteIssueImplementationOnMonorepo,
+		VigilanteIssueImplementationOnTurborepo,
 		VigilanteConflictResolution,
 		VigilanteCreateIssue,
 		VigilanteLocalServiceDependencies,
@@ -151,6 +153,7 @@ func BuildIssuePromptForRuntime(runtime string, target state.WatchTarget, issue 
 		fmt.Sprintf("Repository: %s", target.Repo),
 		fmt.Sprintf("Local repository path: %s", target.Path),
 		fmt.Sprintf("Detected repo shape: %s", normalizedRepoShape(target)),
+		fmt.Sprintf("Detected monorepo stack: %s", normalizedMonorepoStack(target)),
 		fmt.Sprintf("Selected issue implementation skill: %s", selectedSkill),
 		fmt.Sprintf("Repo process context JSON: %s", repoClassificationJSON(target)),
 		fmt.Sprintf("Issue: #%d - %s", issue.Number, issue.Title),
@@ -174,11 +177,21 @@ func BuildIssuePromptForRuntime(runtime string, target state.WatchTarget, issue 
 			"Continue from the reused branch state and build on top of the existing diff instead of restarting from scratch.",
 		)
 	}
+	if normalizedRepoShape(target) == string(repo.ShapeMonorepo) {
+		lines = append(lines,
+			"If the assigned monorepo needs local databases or dependent services for implementation or testing, use the shared `docker-compose-launch` contract instead of inventing stack-specific compose logic.",
+			fmt.Sprintf("Monorepo service-launch contract JSON: %s", monorepoServiceLaunchContractJSON()),
+		)
+	}
 	return strings.Join(lines, "\n")
 }
 
 func IssueImplementationSkill(target state.WatchTarget) string {
 	if normalizedRepoShape(target) == string(repo.ShapeMonorepo) {
+		switch normalizedMonorepoStack(target) {
+		case string(repo.StackTurborepo):
+			return VigilanteIssueImplementationOnTurborepo
+		}
 		return VigilanteIssueImplementationOnMonorepo
 	}
 	return VigilanteIssueImplementation
@@ -192,16 +205,34 @@ func normalizedRepoShape(target state.WatchTarget) string {
 	return shape
 }
 
+func normalizedMonorepoStack(target state.WatchTarget) string {
+	if normalizedRepoShape(target) != string(repo.ShapeMonorepo) {
+		return string(repo.StackUnknown)
+	}
+	stack := strings.TrimSpace(string(target.Classification.Stack.Kind))
+	if stack == "" {
+		return string(repo.StackUnknown)
+	}
+	return stack
+}
+
 func repoClassificationJSON(target state.WatchTarget) string {
 	classification := target.Classification
 	if strings.TrimSpace(string(classification.Shape)) == "" {
 		classification.Shape = repo.ShapeTraditional
 	}
+	if classification.Shape == repo.ShapeMonorepo && strings.TrimSpace(string(classification.Stack.Kind)) == "" {
+		classification.Stack.Kind = repo.StackUnknown
+	}
 	payload := struct {
 		Shape        repo.Shape         `json:"shape"`
+		Stack        *repo.StackDetails `json:"stack,omitempty"`
 		ProcessHints *repo.ProcessHints `json:"process_hints,omitempty"`
 	}{
 		Shape: classification.Shape,
+	}
+	if classification.Shape == repo.ShapeMonorepo {
+		payload.Stack = &classification.Stack
 	}
 	if len(classification.ProcessHints.WorkspaceConfigFiles) > 0 ||
 		len(classification.ProcessHints.WorkspaceManifestFiles) > 0 ||
@@ -211,6 +242,37 @@ func repoClassificationJSON(target state.WatchTarget) string {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return `{"shape":"traditional"}`
+	}
+	return string(data)
+}
+
+func monorepoServiceLaunchContractJSON() string {
+	payload := struct {
+		Skill             string   `json:"skill"`
+		When              string   `json:"when"`
+		Scope             string   `json:"scope"`
+		SupportedServices []string `json:"supported_services"`
+		ResponseFields    []string `json:"response_fields"`
+	}{
+		Skill:             "docker-compose-launch",
+		When:              "Invoke only when the assigned worktree needs local services for implementation or tests.",
+		Scope:             "Launch services scoped to the assigned worktree only.",
+		SupportedServices: []string{"mysql", "mariadb", "postgres", "mongodb"},
+		ResponseFields: []string{
+			"compose_project",
+			"services[].name",
+			"services[].type",
+			"services[].host",
+			"services[].port",
+			"services[].database",
+			"services[].username",
+			"services[].password_env",
+			"services[].connection_url_env",
+		},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return `{"skill":"docker-compose-launch"}`
 	}
 	return string(data)
 }

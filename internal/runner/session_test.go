@@ -299,6 +299,10 @@ func TestRunIssueSessionUsesMonorepoSkillWhenClassified(t *testing.T) {
 		Repo: "owner/repo",
 		Classification: repo.Classification{
 			Shape: repo.ShapeMonorepo,
+			Stack: repo.StackDetails{
+				Kind:     repo.StackTurborepo,
+				Evidence: []string{"turbo.json"},
+			},
 			ProcessHints: repo.ProcessHints{
 				WorkspaceConfigFiles: []string{"pnpm-workspace.yaml"},
 				MultiPackageRoots:    []string{"apps", "packages"},
