@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -195,6 +196,67 @@ func TestBuildConfigFailsWhenProviderVersionIsIncompatible(t *testing.T) {
 	}
 	_, err = BuildConfig(context.Background(), env, selectedProvider)
 	if err == nil || !strings.Contains(err.Error(), "codex CLI version 2.0.0 is incompatible") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInstallLaunchdServicePreparesBinaryBeforeReload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store := state.NewStore()
+	cfg := Config{
+		Executable: filepath.Join(home, ".local", "bin", "vigilante"),
+		PathEnv:    "/opt/homebrew/bin:/usr/bin:/bin",
+		HomeDir:    home,
+	}
+	launchAgentPath := filepath.Join(home, "Library", "LaunchAgents", "com.vigilante.agent.plist")
+	env := &environment.Environment{
+		OS: "darwin",
+		Runner: testutil.FakeRunner{
+			Outputs: map[string]string{
+				testutil.Key("xattr", "-d", "com.apple.provenance", cfg.Executable):           "",
+				testutil.Key("codesign", "--force", "--sign", "-", cfg.Executable):            "",
+				testutil.Key("spctl", "--assess", "--type", "execute", "-vv", cfg.Executable): "accepted\n",
+				testutil.Key("launchctl", "unload", launchAgentPath):                          "",
+				testutil.Key("launchctl", "load", launchAgentPath):                            "",
+			},
+		},
+	}
+
+	if err := installLaunchdService(context.Background(), env, store, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInstallLaunchdServiceFailsWhenBinaryStillRejected(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store := state.NewStore()
+	cfg := Config{
+		Executable: filepath.Join(home, ".local", "bin", "vigilante"),
+		PathEnv:    "/opt/homebrew/bin:/usr/bin:/bin",
+		HomeDir:    home,
+	}
+	env := &environment.Environment{
+		OS: "darwin",
+		Runner: testutil.FakeRunner{
+			Outputs: map[string]string{
+				testutil.Key("xattr", "-d", "com.apple.provenance", cfg.Executable): "",
+				testutil.Key("codesign", "--force", "--sign", "-", cfg.Executable):  "",
+			},
+			Errors: map[string]error{
+				testutil.Key("spctl", "--assess", "--type", "execute", "-vv", cfg.Executable): errors.New("exit status 3"),
+			},
+		},
+	}
+
+	err := installLaunchdService(context.Background(), env, store, cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "macOS rejected daemon binary") || !strings.Contains(err.Error(), "spctl failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

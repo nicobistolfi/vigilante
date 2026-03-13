@@ -193,6 +193,10 @@ func TestWatchUpdatesExistingTarget(t *testing.T) {
 	app.stdout = &stdout
 	app.stderr = testutil.IODiscard{}
 	app.env.OS = "darwin"
+	executablePath, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	launchAgentPath := filepath.Join(home, "Library", "LaunchAgents", "com.vigilante.agent.plist")
 	app.env.Runner = testutil.FakeRunner{
 		LookPaths: map[string]string{"git": "/usr/bin/git", "gh": "/usr/bin/gh", "codex": "/usr/bin/codex"},
@@ -200,15 +204,18 @@ func TestWatchUpdatesExistingTarget(t *testing.T) {
 			"codex --version":                   "codex 0.114.0",
 			"gh auth status":                    "ok",
 			`/bin/zsh -lic printf "%s" "$PATH"`: "/usr/bin:/bin:/Users/test/.local/bin",
-			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'git'`:   "/usr/bin/git\n",
-			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'gh'`:    "/usr/bin/gh\n",
-			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'codex'`: "/Users/test/.local/bin/codex\n",
-			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" 'codex' --version`:  "codex 0.114.0\n",
-			testutil.Key("launchctl", "unload", launchAgentPath):                         "",
-			testutil.Key("launchctl", "load", launchAgentPath):                           "",
-			testutil.Key("git", "rev-parse", "--is-inside-work-tree"):                    "true\n",
-			testutil.Key("git", "remote", "get-url", "origin"):                           "git@github.com:nicobistolfi/vigilante.git\n",
-			testutil.Key("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"):   "origin/main\n",
+			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'git'`:    "/usr/bin/git\n",
+			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'gh'`:     "/usr/bin/gh\n",
+			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" command -v 'codex'`:  "/Users/test/.local/bin/codex\n",
+			`/bin/sh -lc PATH="/usr/bin:/bin:/Users/test/.local/bin" 'codex' --version`:   "codex 0.114.0\n",
+			testutil.Key("xattr", "-d", "com.apple.provenance", executablePath):           "",
+			testutil.Key("codesign", "--force", "--sign", "-", executablePath):            "",
+			testutil.Key("spctl", "--assess", "--type", "execute", "-vv", executablePath): "accepted\n",
+			testutil.Key("launchctl", "unload", launchAgentPath):                          "",
+			testutil.Key("launchctl", "load", launchAgentPath):                            "",
+			testutil.Key("git", "rev-parse", "--is-inside-work-tree"):                     "true\n",
+			testutil.Key("git", "remote", "get-url", "origin"):                            "git@github.com:nicobistolfi/vigilante.git\n",
+			testutil.Key("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"):    "origin/main\n",
 		},
 	}
 

@@ -45,10 +45,27 @@ func installLaunchdService(ctx context.Context, env *environment.Environment, st
 	if err := os.WriteFile(path, []byte(RenderLaunchdPlist(store, cfg)), 0o644); err != nil {
 		return err
 	}
+	if err := prepareLaunchdBinary(ctx, env, cfg.Executable); err != nil {
+		return err
+	}
 	_, _ = env.Runner.Run(ctx, "", "launchctl", "unload", path)
 	if _, err := env.Runner.Run(ctx, "", "launchctl", "load", path); err != nil {
 		return err
 	}
+	return nil
+}
+
+func prepareLaunchdBinary(ctx context.Context, env *environment.Environment, executable string) error {
+	_, _ = env.Runner.Run(ctx, "", "xattr", "-d", "com.apple.provenance", executable)
+
+	if output, err := env.Runner.Run(ctx, "", "codesign", "--force", "--sign", "-", executable); err != nil {
+		return fmt.Errorf("prepare macOS daemon binary %q for launchd: %s", executable, commandFailure("codesign", output, err))
+	}
+
+	if output, err := env.Runner.Run(ctx, "", "spctl", "--assess", "--type", "execute", "-vv", executable); err != nil {
+		return fmt.Errorf("macOS rejected daemon binary %q: %s", executable, commandFailure("spctl", output, err))
+	}
+
 	return nil
 }
 
@@ -224,4 +241,12 @@ func runtimeTool(selectedProvider provider.Provider) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func commandFailure(command string, output string, err error) string {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return fmt.Sprintf("%s failed: %v", command, err)
+	}
+	return fmt.Sprintf("%s failed: %v (%s)", command, err, output)
 }
