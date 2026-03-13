@@ -248,6 +248,8 @@ task setup-daemon
 
 On macOS, `task setup-daemon` now performs one explicit recovery attempt when an existing `com.vigilante.agent` launch agent is already present. If the first refresh fails, the task cleans up the existing launch agent, retries once, and prints a short manual `launchctl bootout ...` hint if recovery still fails.
 
+On macOS, `vigilante setup -d` also prepares the installed daemon binary before reloading the LaunchAgent by clearing an observed `com.apple.provenance` xattr, applying ad-hoc signing, and validating the binary with `spctl`. If macOS still rejects the binary, setup exits with a code-signing error instead of leaving the agent stuck in `OS_REASON_CODESIGNING`.
+
 Notes:
 
 - foreground runs are the quickest way to iterate on scheduler, worktree, and coding-agent execution behavior
